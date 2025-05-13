@@ -2,7 +2,6 @@ use crate::parse::{ToChinese, ToEnglish, to_chinese, to_english};
 use anyhow::{Context, Result};
 use indicatif::{ProgressBar, ProgressStyle};
 use owo_colors::OwoColorize;
-use regex::Regex;
 use reqwest::blocking::Client;
 use rustyline::DefaultEditor;
 use std::collections::HashMap;
@@ -247,8 +246,8 @@ impl Rdict {
     }
 
     pub fn contains_cjk(word: &str) -> bool {
-        let re = Regex::new(r"[\p{Han}]").unwrap();
-        re.is_match(word)
+        word.chars()
+            .any(|ch| ('\u{4E00}'..='\u{9FFF}').contains(&ch))
     }
 }
 
