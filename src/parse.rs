@@ -1,4 +1,4 @@
-use anyhow::{Result, anyhow};
+use anyhow::{Result, ensure};
 use scraper::{Html, Selector};
 use serde::{Deserialize, Serialize};
 
@@ -24,13 +24,13 @@ pub struct ToChineseTranslation {
 pub struct ToChinese {
     pub phonetic: Phonetic,
     pub translations: Vec<ToChineseTranslation>,
-    pub example_sentenses: Vec<ExampleSentence>,
+    pub example_sentences: Vec<ExampleSentence>,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct ToEnglish {
     pub translations: Vec<String>,
-    pub example_sentenses: Vec<ExampleSentence>,
+    pub example_sentences: Vec<ExampleSentence>,
 }
 
 /// Parses English, returns Chinese
@@ -46,13 +46,19 @@ pub fn to_chinese(html: &str) -> Result<ToChinese> {
         let text = element
             .select(&phonetic_selector)
             .next()
-            .map(|el| el.text().collect::<String>().trim().to_string())
+            .map(|el| el.text().collect::<String>().trim().to_owned())
             .unwrap_or_default();
 
-        if i == 0 {
-            result.phonetic.uk = text.trim_matches(|c| c == '/').trim().to_string();
-        } else if i == 1 {
-            result.phonetic.us = text.trim_matches(|c| c == '/').trim().to_string();
+        match i {
+            0 => text
+                .trim_matches('/')
+                .trim()
+                .clone_into(&mut result.phonetic.uk),
+            1 => text
+                .trim_matches('/')
+                .trim()
+                .clone_into(&mut result.phonetic.us),
+            _ => unreachable!(),
         }
     }
 
@@ -70,7 +76,7 @@ pub fn to_chinese(html: &str) -> Result<ToChinese> {
                     .collect::<String>()
                     .trim()
                     .split('；')
-                    .map(|s| s.trim().to_string()) // trim & convert to String
+                    .map(|s| s.trim().to_owned())
                     .collect()
             })
             .unwrap_or_default();
@@ -78,7 +84,7 @@ pub fn to_chinese(html: &str) -> Result<ToChinese> {
         let english_word_type = element
             .select(&pos_selector)
             .next()
-            .map(|e| e.text().collect::<String>().trim().to_string())
+            .map(|e| e.text().collect::<String>().trim().to_owned())
             .unwrap_or_default();
 
         if !chinese_translation.is_empty() || !english_word_type.is_empty() {
@@ -89,7 +95,7 @@ pub fn to_chinese(html: &str) -> Result<ToChinese> {
         }
     }
 
-    // Example sentenses
+    // Example sentences
     let example_selector = Selector::parse(".trans-container .mcols-layout .col2").unwrap();
     let sen_eng_selector = Selector::parse(".sen-eng").unwrap();
     let sen_ch_selector = Selector::parse(".sen-ch").unwrap();
@@ -98,28 +104,27 @@ pub fn to_chinese(html: &str) -> Result<ToChinese> {
         let english_sentence = element
             .select(&sen_eng_selector)
             .next()
-            .map(|e| e.text().collect::<String>().trim().to_string())
+            .map(|e| e.text().collect::<String>().trim().to_owned())
             .unwrap_or_default();
 
         let chinese_sentence = element
             .select(&sen_ch_selector)
             .next()
-            .map(|e| e.text().collect::<String>().trim().to_string())
+            .map(|e| e.text().collect::<String>().trim().to_owned())
             .unwrap_or_default();
 
         if !english_sentence.is_empty() || !chinese_sentence.is_empty() {
-            result.example_sentenses.push(ExampleSentence {
+            result.example_sentences.push(ExampleSentence {
                 english_sentence,
                 chinese_sentence,
             });
         }
     }
 
-    if result.translations.is_empty() {
-        return Err(anyhow!(
-            "No translation results found for English to Chinese"
-        ));
-    }
+    ensure!(
+        !result.translations.is_empty(),
+        "No translation results found for English to Chinese"
+    );
 
     Ok(result)
 }
@@ -132,13 +137,13 @@ pub fn to_english(html: &str) -> Result<ToEnglish> {
     // Translations
     let translation_selector = Selector::parse(".trans-container .basic .col2 .point").unwrap();
     for element in document.select(&translation_selector) {
-        let text = element.text().collect::<String>().trim().to_string();
+        let text = element.text().collect::<String>().trim().to_owned();
         if !text.is_empty() {
             result.translations.push(text);
         }
     }
 
-    // Example sentenses
+    // Example sentences
     let example_selector = Selector::parse(".trans-container .mcols-layout .col2").unwrap();
     let sen_eng_selector = Selector::parse(".sen-eng").unwrap();
     let sen_ch_selector = Selector::parse(".sen-ch").unwrap();
@@ -147,28 +152,27 @@ pub fn to_english(html: &str) -> Result<ToEnglish> {
         let english_sentence = element
             .select(&sen_eng_selector)
             .next()
-            .map(|el| el.text().collect::<String>().trim().to_string())
+            .map(|el| el.text().collect::<String>().trim().to_owned())
             .unwrap_or_default();
 
         let chinese_sentence = element
             .select(&sen_ch_selector)
             .next()
-            .map(|el| el.text().collect::<String>().trim().to_string())
+            .map(|el| el.text().collect::<String>().trim().to_owned())
             .unwrap_or_default();
 
         if !english_sentence.is_empty() || !chinese_sentence.is_empty() {
-            result.example_sentenses.push(ExampleSentence {
+            result.example_sentences.push(ExampleSentence {
                 english_sentence,
                 chinese_sentence,
             });
         }
     }
 
-    if result.translations.is_empty() {
-        return Err(anyhow!(
-            "No translation results found for Chinese to English"
-        ));
-    }
+    ensure!(
+        !result.translations.is_empty(),
+        "No translation results found for Chinese to English"
+    );
 
     Ok(result)
 }

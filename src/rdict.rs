@@ -4,7 +4,6 @@ use indicatif::{ProgressBar, ProgressStyle};
 use owo_colors::OwoColorize;
 use reqwest::blocking::Client;
 use rustyline::DefaultEditor;
-use std::collections::HashMap;
 use std::fmt::Write;
 use std::time::Duration;
 
@@ -18,7 +17,7 @@ impl Rdict {
     pub fn new(base_url: &str, conn: Option<rusqlite::Connection>) -> Self {
         Self {
             client: Client::new(),
-            base_url: base_url.to_string(),
+            base_url: base_url.to_owned(),
             conn,
         }
     }
@@ -28,34 +27,31 @@ impl Rdict {
 
         // Retrieve from cache if available
         if let Some(conn) = &self.conn {
-            match is_cjk {
-                true => {
-                    let mut stmt = conn
-                        .prepare("SELECT data FROM to_english_results WHERE word = ?1")
-                        .unwrap();
-                    let mut rows = stmt.query([word]).unwrap();
-                    if let Ok(Some(row)) = rows.next() {
-                        let data: String = row.get(0).unwrap();
-                        if let Ok(result) = serde_json::from_str::<ToEnglish>(&data) {
-                            self.output_english(word, result, false)?;
-                            println!("  {}\n", format!("[ {word} ] From cache").bright_black());
-                            return Ok(());
-                        }
-                    }
+            if is_cjk {
+                let mut stmt = conn
+                    .prepare("SELECT data FROM to_english_results WHERE word = ?1")
+                    .context("Failed to prepare SQL statement for Chinese cache lookup")?;
+                let mut rows = stmt.query([word])?;
+                if let Some(row) = rows.next()? {
+                    let data: String = row.get(0).context("Failed to get data from row")?;
+                    let result: ToEnglish = serde_json::from_str(&data)
+                        .context("Failed to deserialize data to ToEnglish")?;
+                    self.output_english(word, &result, false)?;
+                    println!("  {}\n", format!("[ {word} ] From cache").bright_black());
+                    return Ok(());
                 }
-                false => {
-                    let mut stmt = conn
-                        .prepare("SELECT data FROM to_chinese_results WHERE word = ?1")
-                        .unwrap();
-                    let mut rows = stmt.query([word]).unwrap();
-                    if let Some(row) = rows.next().unwrap() {
-                        let data: String = row.get(0).unwrap();
-                        if let Ok(result) = serde_json::from_str::<ToChinese>(&data) {
-                            self.output_chinese(word, result, false)?;
-                            println!("  {}\n", format!("[ {word} ] From cache").bright_black());
-                            return Ok(());
-                        }
-                    }
+            } else {
+                let mut stmt = conn
+                    .prepare("SELECT data FROM to_chinese_results WHERE word = ?1")
+                    .context("Failed to prepare SQL statement for English cache lookup")?;
+                let mut rows = stmt.query([word])?;
+                if let Some(row) = rows.next()? {
+                    let data: String = row.get(0).context("Failed to get data from row")?;
+                    let result: ToChinese = serde_json::from_str(&data)
+                        .context("Failed to deserialize data to ToChinese")?;
+                    self.output_chinese(word, &result, false)?;
+                    println!("  {}\n", format!("[ {word} ] From cache").bright_black());
+                    return Ok(());
                 }
             }
         }
@@ -64,16 +60,21 @@ impl Rdict {
         let html = self.fetch_word_html(word).context("Error fetching HTML")?;
         if is_cjk {
             let result = to_english(&html)?;
-            self.output_english(word, result, true)?;
+            self.output_english(word, &result, true)?;
         } else {
             let result = to_chinese(&html)?;
-            self.output_chinese(word, result, true)?;
-        };
+            self.output_chinese(word, &result, true)?;
+        }
 
         Ok(())
     }
 
-    pub fn output_english(&self, word: &str, result: ToEnglish, save_to_cache: bool) -> Result<()> {
+    pub fn output_english(
+        &self,
+        word: &str,
+        result: &ToEnglish,
+        save_to_cache: bool,
+    ) -> Result<()> {
         if save_to_cache {
             if let Some(conn) = &self.conn {
                 let data = serde_json::to_string(&result).context("Error serializing result")?;
@@ -82,46 +83,39 @@ impl Rdict {
                     rusqlite::params![word, data],
                 )
                 .context("Error saving to cache")?;
-            };
+            }
         }
 
-        let mut output = "\n".to_string();
+        let mut output = "\n".to_owned();
 
         if !result.translations.is_empty() {
-            output += &format!("  {}\n", "# Translations".bright_black());
-            output += &result
-                .translations
-                .iter()
-                .fold(String::new(), |mut output, tr| {
-                    let _ = writeln!(output, "  * {}", tr.green());
-                    output
-                });
-            output += "\n";
+            writeln!(output, "  {}", "# Translations".bright_black())?;
+            for tr in &result.translations {
+                writeln!(output, "  * {}", tr.green())?;
+            }
+            writeln!(output)?;
         }
 
-        if !result.example_sentenses.is_empty() {
-            output += &format!("  {}\n", "# Examples".bright_black());
-            output += &result
-                .example_sentenses
-                .iter()
-                .fold(String::new(), |mut output, ex| {
-                    let _ = write!(
-                        output,
-                        "  * {}\n    {}\n",
-                        ex.english_sentence.green(),
-                        ex.chinese_sentence.magenta()
-                    );
-                    output
-                });
-            output += "\n";
+        if !result.example_sentences.is_empty() {
+            writeln!(output, "  {}", "# Examples".bright_black())?;
+            for ex in &result.example_sentences {
+                writeln!(output, "  * {}", ex.english_sentence.green())?;
+                writeln!(output, "    {}", ex.chinese_sentence.magenta())?;
+            }
+            writeln!(output)?;
         }
 
-        print!("{}", output);
+        print!("{output}");
 
         Ok(())
     }
 
-    pub fn output_chinese(&self, word: &str, result: ToChinese, save_to_cache: bool) -> Result<()> {
+    pub fn output_chinese(
+        &self,
+        word: &str,
+        result: &ToChinese,
+        save_to_cache: bool,
+    ) -> Result<()> {
         if save_to_cache {
             if let Some(conn) = &self.conn {
                 let data = serde_json::to_string(&result).context("Error serializing result")?;
@@ -133,69 +127,42 @@ impl Rdict {
             }
         }
 
-        let mut output = "\n".to_string();
+        let mut output = "\n".to_owned();
 
         if !result.phonetic.uk.is_empty() || !result.phonetic.us.is_empty() {
-            output += &format!("  {}\n", "# Phonetics".bright_black());
-            output += &format!(
-                "  英：[{}]\n  美：[{}]\n\n",
-                result.phonetic.uk.green(),
-                result.phonetic.us.green()
-            )
-            .to_string();
+            writeln!(output, "  {}", "# Phonetics".bright_black())?;
+            writeln!(output, "  英：[{}]", result.phonetic.uk.green())?;
+            writeln!(output, "  美：[{}]", result.phonetic.us.green())?;
+            writeln!(output)?;
         }
 
         if !result.translations.is_empty() {
-            output += &format!("  {}\n", "# Translations".bright_black());
-            output += &result
-                .translations
-                .iter()
-                .fold(String::new(), |mut output, t| {
-                    let word_type_display = if t.english_word_type.is_empty() {
-                        String::new()
-                    } else {
-                        format!("[{}]\n", t.english_word_type)
-                    };
-
-                    let _ = writeln!(
-                        output,
-                        "  {}{}",
-                        word_type_display,
-                        t.chinese_translation
-                            .iter()
-                            .fold(String::new(), |mut output, tr| {
-                                let _ = writeln!(output, "  * {}", tr.green());
-                                output
-                            })
-                    );
-                    output
-                })
-        };
-
-        if !result.example_sentenses.is_empty() {
-            output += &format!("  {}\n", "# Examples".bright_black());
-            output += &result
-                .example_sentenses
-                .iter()
-                .fold(String::new(), |mut output, ex| {
-                    let _ = write!(
-                        output,
-                        "  * {}\n    {}\n",
-                        ex.english_sentence.green(),
-                        ex.chinese_sentence.magenta()
-                    );
-                    output
-                });
-            output += "\n";
+            writeln!(output, "  {}", "# Translations".bright_black())?;
+            for t in &result.translations {
+                if !t.english_word_type.is_empty() {
+                    writeln!(output, "  [{}]", t.english_word_type)?;
+                }
+                for tr in &t.chinese_translation {
+                    writeln!(output, "  * {}", tr.green())?;
+                }
+            }
+            writeln!(output)?;
         }
 
-        print!("{}", output);
+        if !result.example_sentences.is_empty() {
+            writeln!(output, "  {}", "# Examples".bright_black())?;
+            for ex in &result.example_sentences {
+                writeln!(output, "  * {}", ex.english_sentence.green())?;
+                writeln!(output, "    {}", ex.chinese_sentence.magenta())?;
+            }
+            writeln!(output)?;
+        }
+
+        print!("{output}");
         Ok(())
     }
 
     pub fn fetch_word_html(&self, word: &str) -> Result<String, reqwest::Error> {
-        let params = HashMap::from([("word", word), ("lang", "en")]);
-
         let spinner = ProgressBar::new_spinner();
         spinner.set_message("Fetching data...");
         spinner.enable_steady_tick(Duration::from_millis(100));
@@ -210,7 +177,7 @@ impl Rdict {
         let response = self
             .client
             .get(&url)
-            .query(&params)
+            .query(&[("word", word), ("lang", "en")])
             .header(
                 reqwest::header::USER_AGENT,
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 \
@@ -284,7 +251,7 @@ mod tests {
         cmd.write_stdin("")
             .assert()
             .failure()
-            .stderr(predicate::str::contains("No word specified."));
+            .stderr(predicate::str::contains("No word specified"));
 
         Ok(())
     }
