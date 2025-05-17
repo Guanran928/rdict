@@ -8,4 +8,8 @@ pub struct Args {
     /// Cache translations
     #[arg(long)]
     pub no_cache: bool,
+
+    /// Output using JSON
+    #[arg(long)]
+    pub json: bool,
 }

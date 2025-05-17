@@ -1,9 +1,10 @@
-use crate::parse::{ToChinese, ToEnglish, to_chinese, to_english};
+use crate::parse::{Data, ToChinese, ToEnglish, to_chinese, to_english};
 use anyhow::{Context, Result};
 use indicatif::{ProgressBar, ProgressStyle};
 use owo_colors::OwoColorize;
 use reqwest::blocking::Client;
 use rustyline::DefaultEditor;
+use serde::Serialize;
 use std::fmt::Write;
 use std::time::Duration;
 
@@ -11,19 +12,72 @@ pub struct Rdict {
     client: Client,
     base_url: String,
     conn: Option<rusqlite::Connection>,
+    format: Format,
+}
+
+#[derive(Debug)]
+pub enum Format {
+    Pretty,
+    Json,
+}
+
+pub struct FetchedResult {
+    data: Data,
+    is_cached: bool,
+}
+
+#[derive(Serialize)]
+struct OutputWrapper<'a, T> {
+    r#type: &'a str,
+    data: &'a T,
 }
 
 impl Rdict {
-    pub fn new(base_url: &str, conn: Option<rusqlite::Connection>) -> Self {
+    pub fn new(base_url: &str, conn: Option<rusqlite::Connection>, format: Format) -> Self {
         Self {
             client: Client::new(),
             base_url: base_url.to_owned(),
             conn,
+            format,
         }
     }
 
     pub fn output_results(&self, word: &str) -> Result<()> {
-        let is_cjk = Self::contains_cjk(word);
+        let result = self.get_results(word)?;
+
+        match self.format {
+            Format::Json => match &result.data {
+                Data::ToChinese(data) => {
+                    let wrapper = OutputWrapper {
+                        r#type: "ToChinese",
+                        data,
+                    };
+                    println!("{}", serde_json::to_string_pretty(&wrapper)?);
+                }
+                Data::ToEnglish(data) => {
+                    let wrapper = OutputWrapper {
+                        r#type: "ToEnglish",
+                        data,
+                    };
+                    println!("{}", serde_json::to_string_pretty(&wrapper)?);
+                }
+            },
+            Format::Pretty => {
+                match &result.data {
+                    Data::ToChinese(tc) => output_chinese(tc)?,
+                    Data::ToEnglish(te) => output_english(te)?,
+                }
+                if result.is_cached {
+                    println!("  {}\n", format!("[ {word} ] From cache").bright_black());
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn get_results(&self, word: &str) -> Result<FetchedResult> {
+        let is_cjk = contains_cjk(word);
 
         // Retrieve from cache if available
         if let Some(conn) = &self.conn {
@@ -36,9 +90,11 @@ impl Rdict {
                     let data: String = row.get(0).context("Failed to get data from row")?;
                     let result: ToEnglish = serde_json::from_str(&data)
                         .context("Failed to deserialize data to ToEnglish")?;
-                    self.output_english(word, &result, false)?;
-                    println!("  {}\n", format!("[ {word} ] From cache").bright_black());
-                    return Ok(());
+
+                    return Ok(FetchedResult {
+                        data: Data::ToEnglish(result),
+                        is_cached: true,
+                    });
                 }
             } else {
                 let mut stmt = conn
@@ -49,33 +105,20 @@ impl Rdict {
                     let data: String = row.get(0).context("Failed to get data from row")?;
                     let result: ToChinese = serde_json::from_str(&data)
                         .context("Failed to deserialize data to ToChinese")?;
-                    self.output_chinese(word, &result, false)?;
-                    println!("  {}\n", format!("[ {word} ] From cache").bright_black());
-                    return Ok(());
+
+                    return Ok(FetchedResult {
+                        data: Data::ToChinese(result),
+                        is_cached: true,
+                    });
                 }
             }
         }
 
-        // If not found in cache, fetch from the web
+        // If not found in cache, fetch from the web, and save to cache
         let html = self.fetch_word_html(word).context("Error fetching HTML")?;
+
         if is_cjk {
             let result = to_english(&html)?;
-            self.output_english(word, &result, true)?;
-        } else {
-            let result = to_chinese(&html)?;
-            self.output_chinese(word, &result, true)?;
-        }
-
-        Ok(())
-    }
-
-    pub fn output_english(
-        &self,
-        word: &str,
-        result: &ToEnglish,
-        save_to_cache: bool,
-    ) -> Result<()> {
-        if save_to_cache {
             if let Some(conn) = &self.conn {
                 let data = serde_json::to_string(&result).context("Error serializing result")?;
                 conn.execute(
@@ -84,39 +127,13 @@ impl Rdict {
                 )
                 .context("Error saving to cache")?;
             }
-        }
 
-        let mut output = "\n".to_owned();
-
-        if !result.translations.is_empty() {
-            writeln!(output, "  {}", "# Translations".bright_black())?;
-            for tr in &result.translations {
-                writeln!(output, "  * {}", tr.green())?;
-            }
-            writeln!(output)?;
-        }
-
-        if !result.example_sentences.is_empty() {
-            writeln!(output, "  {}", "# Examples".bright_black())?;
-            for ex in &result.example_sentences {
-                writeln!(output, "  * {}", ex.english_sentence.green())?;
-                writeln!(output, "    {}", ex.chinese_sentence.magenta())?;
-            }
-            writeln!(output)?;
-        }
-
-        print!("{output}");
-
-        Ok(())
-    }
-
-    pub fn output_chinese(
-        &self,
-        word: &str,
-        result: &ToChinese,
-        save_to_cache: bool,
-    ) -> Result<()> {
-        if save_to_cache {
+            Ok(FetchedResult {
+                data: Data::ToEnglish(result),
+                is_cached: false,
+            })
+        } else {
+            let result = to_chinese(&html)?;
             if let Some(conn) = &self.conn {
                 let data = serde_json::to_string(&result).context("Error serializing result")?;
                 conn.execute(
@@ -125,41 +142,12 @@ impl Rdict {
                 )
                 .context("Error saving to cache")?;
             }
+
+            Ok(FetchedResult {
+                data: Data::ToChinese(result),
+                is_cached: false,
+            })
         }
-
-        let mut output = "\n".to_owned();
-
-        if !result.phonetic.uk.is_empty() || !result.phonetic.us.is_empty() {
-            writeln!(output, "  {}", "# Phonetics".bright_black())?;
-            writeln!(output, "  英：[{}]", result.phonetic.uk.green())?;
-            writeln!(output, "  美：[{}]", result.phonetic.us.green())?;
-            writeln!(output)?;
-        }
-
-        if !result.translations.is_empty() {
-            writeln!(output, "  {}", "# Translations".bright_black())?;
-            for t in &result.translations {
-                if !t.english_word_type.is_empty() {
-                    writeln!(output, "  [{}]", t.english_word_type)?;
-                }
-                for tr in &t.chinese_translation {
-                    writeln!(output, "  * {}", tr.green())?;
-                }
-            }
-            writeln!(output)?;
-        }
-
-        if !result.example_sentences.is_empty() {
-            writeln!(output, "  {}", "# Examples".bright_black())?;
-            for ex in &result.example_sentences {
-                writeln!(output, "  * {}", ex.english_sentence.green())?;
-                writeln!(output, "    {}", ex.chinese_sentence.magenta())?;
-            }
-            writeln!(output)?;
-        }
-
-        print!("{output}");
-        Ok(())
     }
 
     pub fn fetch_word_html(&self, word: &str) -> Result<String, reqwest::Error> {
@@ -192,7 +180,11 @@ impl Rdict {
     pub fn interactive_mode(&self) -> rustyline::Result<()> {
         let mut rl = DefaultEditor::new()?;
         loop {
-            let readline = rl.readline(format!("{}# ", "[rdict]".green()).as_str());
+            let readline = if cfg!(target_family = "windows") {
+                rl.readline("[rdict]# ")
+            } else {
+                rl.readline(format!("{}# ", "[rdict]".green()).as_str())
+            };
             match readline {
                 Ok(line) => {
                     if !line.is_empty() {
@@ -211,11 +203,72 @@ impl Rdict {
         }
         Ok(())
     }
+}
 
-    pub fn contains_cjk(word: &str) -> bool {
-        word.chars()
-            .any(|ch| ('\u{4E00}'..='\u{9FFF}').contains(&ch))
+fn contains_cjk(word: &str) -> bool {
+    word.chars()
+        .any(|ch| ('\u{4E00}'..='\u{9FFF}').contains(&ch))
+}
+
+fn output_chinese(result: &ToChinese) -> Result<()> {
+    let mut output = "\n".to_owned();
+
+    if !result.phonetic.uk.is_empty() || !result.phonetic.us.is_empty() {
+        writeln!(output, "  {}", "# Phonetics".bright_black())?;
+        writeln!(output, "  英：[{}]", result.phonetic.uk.green())?;
+        writeln!(output, "  美：[{}]", result.phonetic.us.green())?;
+        writeln!(output)?;
     }
+
+    if !result.translations.is_empty() {
+        writeln!(output, "  {}", "# Translations".bright_black())?;
+        for t in &result.translations {
+            if !t.english_word_type.is_empty() {
+                writeln!(output, "  [{}]", t.english_word_type)?;
+            }
+            for tr in &t.chinese_translation {
+                writeln!(output, "  * {}", tr.green())?;
+            }
+        }
+        writeln!(output)?;
+    }
+
+    if !result.example_sentences.is_empty() {
+        writeln!(output, "  {}", "# Examples".bright_black())?;
+        for ex in &result.example_sentences {
+            writeln!(output, "  * {}", ex.english_sentence.green())?;
+            writeln!(output, "    {}", ex.chinese_sentence.magenta())?;
+        }
+        writeln!(output)?;
+    }
+
+    print!("{output}");
+    Ok(())
+}
+
+fn output_english(result: &ToEnglish) -> Result<()> {
+    let mut output = "\n".to_owned();
+
+    if !result.translations.is_empty() {
+        writeln!(output, "  {}", "# Translations".bright_black())?;
+        for tr in &result.translations {
+            writeln!(output, "  * {}", tr.green())?;
+        }
+        writeln!(output)?;
+    }
+
+    if !result.example_sentences.is_empty() {
+        writeln!(output, "  {}", "# Examples".bright_black())?;
+        for ex in &result.example_sentences {
+            writeln!(output, "  * {}", ex.english_sentence.green())?;
+            writeln!(output, "    {}", ex.chinese_sentence.magenta())?;
+        }
+        writeln!(output)?;
+    }
+
+    print!("{output}");
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -227,22 +280,22 @@ mod tests {
 
     #[test]
     fn test_contains_cjk_with_cjk() {
-        assert!(Rdict::contains_cjk("你好"));
+        assert!(contains_cjk("你好"));
     }
 
     #[test]
     fn test_contains_cjk_without_cjk() {
-        assert!(!Rdict::contains_cjk("hello"));
+        assert!(!contains_cjk("hello"));
     }
 
     #[test]
     fn test_contains_cjk_mixed_input() {
-        assert!(Rdict::contains_cjk("hello你好"));
+        assert!(contains_cjk("hello你好"));
     }
 
     #[test]
     fn test_contains_cjk_empty() {
-        assert!(!Rdict::contains_cjk(""));
+        assert!(!contains_cjk(""));
     }
 
     #[test]
@@ -274,6 +327,7 @@ mod tests {
             client: Client::new(),
             base_url: server.url(),
             conn: None,
+            format: self::Format::Pretty,
         };
 
         let html = rdict.fetch_word_html("hello").unwrap();

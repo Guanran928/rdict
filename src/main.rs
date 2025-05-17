@@ -3,7 +3,7 @@ mod parse;
 mod rdict;
 
 use crate::args::Args;
-use crate::rdict::Rdict;
+use crate::rdict::{Format, Rdict};
 use anyhow::{Context, anyhow, ensure};
 use clap::Parser;
 use directories_next::ProjectDirs;
@@ -30,7 +30,7 @@ fn main() -> anyhow::Result<()> {
         }
 
         let conn = Connection::open(&db_path)
-            .with_context(|| format!("Failed to open database at {db_path:?}"))?;
+            .with_context(|| format!("Failed to open database at {}", db_path.display()))?;
 
         if should_init_db {
             let init_statements = [
@@ -57,7 +57,13 @@ fn main() -> anyhow::Result<()> {
         Some(conn)
     };
 
-    let rdict = Rdict::new("https://m.youdao.com", conn);
+    let format = if cli.json {
+        Format::Json
+    } else {
+        Format::Pretty
+    };
+
+    let rdict = Rdict::new("https://m.youdao.com", conn, format);
 
     match cli.word {
         Some(word) => rdict.output_results(&word)?,

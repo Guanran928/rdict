@@ -33,6 +33,12 @@ pub struct ToEnglish {
     pub example_sentences: Vec<ExampleSentence>,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub enum Data {
+    ToChinese(ToChinese),
+    ToEnglish(ToEnglish),
+}
+
 /// Parses English, returns Chinese
 pub fn to_chinese(html: &str) -> Result<ToChinese> {
     let document = Html::parse_document(html);

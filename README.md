@@ -15,6 +15,7 @@ A fast, terminal-based Youdao dictionary client written in Rust.
 - The classic "blazingly fast" -- complete with unnecessary 🦀 spam, just like every other Rust project
 - Cached translation results
 - Interactive mode
+- JSON output
 
 ---
 
