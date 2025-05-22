@@ -213,18 +213,25 @@ fn contains_cjk(word: &str) -> bool {
 fn output_chinese(result: &ToChinese) -> Result<()> {
     let mut output = "\n".to_owned();
 
-    if !result.phonetic.uk.is_empty() || !result.phonetic.us.is_empty() {
+    if result.phonetic.uk.is_some() || result.phonetic.us.is_some() {
         writeln!(output, "  {}", "# Phonetics".bright_black())?;
-        writeln!(output, "  英：[{}]", result.phonetic.uk.green())?;
-        writeln!(output, "  美：[{}]", result.phonetic.us.green())?;
+
+        if let Some(ref uk) = result.phonetic.uk {
+            writeln!(output, "  英：[{}]", uk.green())?;
+        }
+
+        if let Some(ref us) = result.phonetic.us {
+            writeln!(output, "  美：[{}]", us.green())?;
+        }
+
         writeln!(output)?;
     }
 
     if !result.translations.is_empty() {
         writeln!(output, "  {}", "# Translations".bright_black())?;
         for t in &result.translations {
-            if !t.english_word_type.is_empty() {
-                writeln!(output, "  [{}]", t.english_word_type)?;
+            if let Some(ref ty) = t.english_word_type {
+                writeln!(output, "  [{ty}]")?;
             }
             for tr in &t.chinese_translation {
                 writeln!(output, "  * {}", tr.green())?;

@@ -4,8 +4,8 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Phonetic {
-    pub uk: String,
-    pub us: String,
+    pub uk: Option<String>,
+    pub us: Option<String>,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -16,7 +16,7 @@ pub struct ExampleSentence {
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct ToChineseTranslation {
-    pub english_word_type: String,
+    pub english_word_type: Option<String>,
     pub chinese_translation: Vec<String>,
 }
 
@@ -52,18 +52,23 @@ pub fn to_chinese(html: &str) -> Result<ToChinese> {
         let text = element
             .select(&phonetic_selector)
             .next()
-            .map(|el| el.text().collect::<String>().trim().to_owned())
-            .unwrap_or_default();
+            .map(|el| el.text().collect::<String>().trim().to_owned());
 
         match i {
-            0 => text
-                .trim_matches('/')
-                .trim()
-                .clone_into(&mut result.phonetic.uk),
-            1 => text
-                .trim_matches('/')
-                .trim()
-                .clone_into(&mut result.phonetic.us),
+            0 => {
+                result.phonetic.uk = text
+                    .as_deref()
+                    .map(|s| s.trim_matches('/').trim())
+                    .filter(|s| !s.is_empty())
+                    .map(std::string::ToString::to_string);
+            }
+            1 => {
+                result.phonetic.us = text
+                    .as_deref()
+                    .map(|s| s.trim_matches('/').trim())
+                    .filter(|s| !s.is_empty())
+                    .map(std::string::ToString::to_string);
+            }
             _ => unreachable!(),
         }
     }
@@ -90,10 +95,9 @@ pub fn to_chinese(html: &str) -> Result<ToChinese> {
         let english_word_type = element
             .select(&pos_selector)
             .next()
-            .map(|e| e.text().collect::<String>().trim().to_owned())
-            .unwrap_or_default();
+            .map(|e| e.text().collect::<String>().trim().to_owned());
 
-        if !chinese_translation.is_empty() || !english_word_type.is_empty() {
+        if !chinese_translation.is_empty() || english_word_type.is_some() {
             result.translations.push(ToChineseTranslation {
                 english_word_type,
                 chinese_translation,
