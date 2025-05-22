@@ -1,10 +1,9 @@
-use crate::parse::{Data, ToChinese, ToEnglish, to_chinese, to_english};
+use crate::parse::{ToChinese, ToEnglish, TranslationData, to_chinese, to_english};
 use anyhow::{Context, Result};
 use indicatif::{ProgressBar, ProgressStyle};
 use owo_colors::OwoColorize;
 use reqwest::blocking::Client;
 use rustyline::DefaultEditor;
-use serde::Serialize;
 use std::fmt::Write;
 use std::time::Duration;
 
@@ -22,14 +21,8 @@ pub enum Format {
 }
 
 pub struct FetchedResult {
-    data: Data,
+    data: TranslationData,
     is_cached: bool,
-}
-
-#[derive(Serialize)]
-struct OutputWrapper<'a, T> {
-    r#type: &'a str,
-    data: &'a T,
 }
 
 impl Rdict {
@@ -46,26 +39,11 @@ impl Rdict {
         let result = self.get_results(word)?;
 
         match self.format {
-            Format::Json => match &result.data {
-                Data::ToChinese(data) => {
-                    let wrapper = OutputWrapper {
-                        r#type: "ToChinese",
-                        data,
-                    };
-                    println!("{}", serde_json::to_string_pretty(&wrapper)?);
-                }
-                Data::ToEnglish(data) => {
-                    let wrapper = OutputWrapper {
-                        r#type: "ToEnglish",
-                        data,
-                    };
-                    println!("{}", serde_json::to_string_pretty(&wrapper)?);
-                }
-            },
+            Format::Json => println!("{}", serde_json::to_string_pretty(&result.data)?),
             Format::Pretty => {
                 match &result.data {
-                    Data::ToChinese(tc) => output_chinese(tc)?,
-                    Data::ToEnglish(te) => output_english(te)?,
+                    TranslationData::ToChinese(tc) => output_chinese(tc)?,
+                    TranslationData::ToEnglish(te) => output_english(te)?,
                 }
                 if result.is_cached {
                     println!("  {}\n", format!("[ {word} ] From cache").bright_black());
@@ -92,7 +70,7 @@ impl Rdict {
                         .context("Failed to deserialize data to ToEnglish")?;
 
                     return Ok(FetchedResult {
-                        data: Data::ToEnglish(result),
+                        data: TranslationData::ToEnglish(result),
                         is_cached: true,
                     });
                 }
@@ -107,7 +85,7 @@ impl Rdict {
                         .context("Failed to deserialize data to ToChinese")?;
 
                     return Ok(FetchedResult {
-                        data: Data::ToChinese(result),
+                        data: TranslationData::ToChinese(result),
                         is_cached: true,
                     });
                 }
@@ -129,7 +107,7 @@ impl Rdict {
             }
 
             Ok(FetchedResult {
-                data: Data::ToEnglish(result),
+                data: TranslationData::ToEnglish(result),
                 is_cached: false,
             })
         } else {
@@ -144,7 +122,7 @@ impl Rdict {
             }
 
             Ok(FetchedResult {
-                data: Data::ToChinese(result),
+                data: TranslationData::ToChinese(result),
                 is_cached: false,
             })
         }
@@ -213,38 +191,38 @@ fn contains_cjk(word: &str) -> bool {
 fn output_chinese(result: &ToChinese) -> Result<()> {
     let mut output = "\n".to_owned();
 
-    if result.phonetic.uk.is_some() || result.phonetic.us.is_some() {
-        writeln!(output, "  {}", "# Phonetics".bright_black())?;
+    if result.pronunciation.uk.is_some() || result.pronunciation.us.is_some() {
+        writeln!(output, "  {}", "# Pronunciation".bright_black())?;
 
-        if let Some(ref uk) = result.phonetic.uk {
+        if let Some(ref uk) = result.pronunciation.uk {
             writeln!(output, "  英：[{}]", uk.green())?;
         }
 
-        if let Some(ref us) = result.phonetic.us {
+        if let Some(ref us) = result.pronunciation.us {
             writeln!(output, "  美：[{}]", us.green())?;
         }
 
         writeln!(output)?;
     }
 
-    if !result.translations.is_empty() {
-        writeln!(output, "  {}", "# Translations".bright_black())?;
-        for t in &result.translations {
-            if let Some(ref ty) = t.english_word_type {
-                writeln!(output, "  [{ty}]")?;
+    if !result.meanings.is_empty() {
+        writeln!(output, "  {}", "# Meanings".bright_black())?;
+        for me in &result.meanings {
+            if let Some(ref pa) = me.part_of_speech {
+                writeln!(output, "  [{pa}]")?;
             }
-            for tr in &t.chinese_translation {
-                writeln!(output, "  * {}", tr.green())?;
+            for de in &me.definitions {
+                writeln!(output, "  * {}", de.green())?;
             }
+            writeln!(output)?;
         }
-        writeln!(output)?;
     }
 
-    if !result.example_sentences.is_empty() {
+    if !result.examples.is_empty() {
         writeln!(output, "  {}", "# Examples".bright_black())?;
-        for ex in &result.example_sentences {
-            writeln!(output, "  * {}", ex.english_sentence.green())?;
-            writeln!(output, "    {}", ex.chinese_sentence.magenta())?;
+        for ex in &result.examples {
+            writeln!(output, "  * {}", ex.en.green())?;
+            writeln!(output, "    {}", ex.zh.magenta())?;
         }
         writeln!(output)?;
     }
@@ -256,19 +234,19 @@ fn output_chinese(result: &ToChinese) -> Result<()> {
 fn output_english(result: &ToEnglish) -> Result<()> {
     let mut output = "\n".to_owned();
 
-    if !result.translations.is_empty() {
-        writeln!(output, "  {}", "# Translations".bright_black())?;
-        for tr in &result.translations {
-            writeln!(output, "  * {}", tr.green())?;
+    if !result.meanings.is_empty() {
+        writeln!(output, "  {}", "# Meanings".bright_black())?;
+        for me in &result.meanings {
+            writeln!(output, "  * {}", me.green())?;
         }
         writeln!(output)?;
     }
 
-    if !result.example_sentences.is_empty() {
+    if !result.examples.is_empty() {
         writeln!(output, "  {}", "# Examples".bright_black())?;
-        for ex in &result.example_sentences {
-            writeln!(output, "  * {}", ex.english_sentence.green())?;
-            writeln!(output, "    {}", ex.chinese_sentence.magenta())?;
+        for ex in &result.examples {
+            writeln!(output, "  * {}", ex.en.green())?;
+            writeln!(output, "    {}", ex.zh.magenta())?;
         }
         writeln!(output)?;
     }
