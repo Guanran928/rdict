@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Result, ensure};
 use scraper::{Html, Selector};
 use serde::{Deserialize, Serialize};
 
@@ -132,6 +132,14 @@ pub fn to_chinese(html: &str) -> Result<ToChinese> {
         }
     }
 
+    ensure!(
+        !result.examples.is_empty()
+            || !result.meanings.is_empty()
+            || result.pronunciation.uk.is_some()
+            || result.pronunciation.us.is_some(),
+        "No translation results found for English to Chinese"
+    );
+
     Ok(result)
 }
 
@@ -171,6 +179,11 @@ pub fn to_english(html: &str) -> Result<ToEnglish> {
             result.examples.push(Example { en, zh });
         }
     }
+
+    ensure!(
+        !result.examples.is_empty() || !result.meanings.is_empty(),
+        "No translation results found for Chinese To English"
+    );
 
     Ok(result)
 }

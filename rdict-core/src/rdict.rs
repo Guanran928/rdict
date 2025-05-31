@@ -1,0 +1,485 @@
+use crate::parse::{ToChinese, ToEnglish, TranslationData, to_chinese, to_english};
+use anyhow::{Context, Result};
+use indicatif::{ProgressBar, ProgressStyle};
+use owo_colors::OwoColorize;
+use reqwest::Client;
+use rustyline::DefaultEditor;
+use std::fmt::Write;
+use std::fs;
+use std::time::Duration;
+use tokio_rusqlite::{Connection, params};
+
+pub struct Rdict {
+    client: Client,
+    base_url: String,
+    conn: Option<tokio_rusqlite::Connection>,
+    format: Format,
+}
+
+#[derive(Debug)]
+pub enum Format {
+    /// Markdown with ANSI color escape sequenses
+    MarkdownColored,
+    /// Plain Markdown
+    Markdown,
+    /// Formatted JSON
+    Json,
+}
+
+pub struct FetchedResult {
+    pub data: TranslationData,
+    pub is_cached: bool,
+}
+
+impl Rdict {
+    pub async fn new(
+        base_url: &str,
+        format: Format,
+        cache_db_path: Option<std::path::PathBuf>,
+    ) -> Result<Self> {
+        let conn: Option<Connection> = if cache_db_path.is_some() {
+            let db_path = cache_db_path.unwrap();
+            let should_init_db = !db_path.exists();
+
+            if let Some(parent) = db_path.parent() {
+                fs::create_dir_all(parent).with_context(|| {
+                    format!("Failed to create cache directory at {:?}", parent.display())
+                })?;
+            }
+
+            let conn = Connection::open(&db_path)
+                .await
+                .with_context(|| format!("Failed to open database at {}", db_path.display()))?;
+
+            if should_init_db {
+                let init_statements = [
+                    "CREATE TABLE to_english_results (
+                    word TEXT PRIMARY KEY,
+                    data TEXT NOT NULL
+                );",
+                    "CREATE TABLE to_chinese_results (
+                    word TEXT PRIMARY KEY,
+                    data TEXT NOT NULL
+                );",
+                ];
+
+                let _ = conn
+                    .call(move |conn| {
+                        for statement in init_statements {
+                            conn.execute(statement, ())?;
+                        }
+
+                        Ok(())
+                    })
+                    .await
+                    .with_context(|| {
+                        format!(
+                            "Failed to initialize SQLite cache database: {}",
+                            db_path.display()
+                        )
+                    });
+            }
+
+            Some(conn)
+        } else {
+            None
+        };
+
+        Ok(Self {
+            client: Client::new(),
+            base_url: base_url.to_owned(),
+            conn,
+            format,
+        })
+    }
+
+    pub async fn interactive_mode(&self) -> rustyline::Result<()> {
+        let mut rl = DefaultEditor::new()?;
+        loop {
+            let readline = if cfg!(target_family = "windows") {
+                rl.readline("[rdict]# ")
+            } else {
+                rl.readline(format!("{}# ", "[rdict]".green()).as_str())
+            };
+            match readline {
+                Ok(line) => {
+                    if !line.is_empty() {
+                        rl.add_history_entry(line.as_str())?;
+                        let word = line.as_str().trim();
+                        if let Err(err) = Self::output_results(self, word).await {
+                            println!("Error: {err:?}");
+                        }
+                    }
+                }
+                Err(err) => {
+                    println!("Error: {err:?}");
+                    break;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub async fn output_results(&self, word: &str) -> Result<()> {
+        let result = self.get_results(word).await?;
+
+        match self.format {
+            Format::Json => println!("{}", serde_json::to_string_pretty(&result.data)?),
+            Format::MarkdownColored => {
+                let output = match &result.data {
+                    TranslationData::ToChinese(tc) => output_chinese(tc)?,
+                    TranslationData::ToEnglish(te) => output_english(te)?,
+                };
+                let indented: String = output
+                    .lines()
+                    .map(|line| format!("  {line}"))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+
+                println!("\n{indented}\n");
+
+                if result.is_cached {
+                    println!("  {}\n", format!("[ {word} ] From cache").bright_black());
+                }
+            }
+            Format::Markdown => {
+                let output = match &result.data {
+                    TranslationData::ToChinese(tc) => output_chinese_plain(tc)?,
+                    TranslationData::ToEnglish(te) => output_english_plain(te)?,
+                };
+                let indented: String = output
+                    .lines()
+                    .map(|line| format!("  {line}"))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+
+                println!("\n{indented}\n");
+
+                if result.is_cached {
+                    println!("  {}\n", format!("[ {word} ] From cache").bright_black());
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    pub async fn get_results(&self, word: &str) -> Result<FetchedResult> {
+        let word = word.to_string();
+        let is_cjk = contains_cjk(&word);
+
+        // Try cache first
+        if let Some(conn) = &self.conn {
+            let (table, variant): (&str, fn(String) -> TranslationData) = if is_cjk {
+                ("to_english_results", |v| {
+                    TranslationData::ToEnglish(serde_json::from_str(&v).unwrap())
+                })
+            } else {
+                ("to_chinese_results", |v| {
+                    TranslationData::ToChinese(serde_json::from_str(&v).unwrap())
+                })
+            };
+            let word_for_query = word.clone();
+            let result: Option<String> = conn
+                .call(move |conn| {
+                    let mut stmt =
+                        conn.prepare(&format!("SELECT data FROM {table} WHERE word = ?1"))?;
+                    let mut rows = stmt.query([word_for_query])?;
+
+                    if let Some(row) = rows.next()? {
+                        let data: String = row.get(0)?;
+                        Ok(Some(data))
+                    } else {
+                        Ok(None)
+                    }
+                })
+                .await
+                .with_context(|| {
+                    format!("Failed to look up cached translation for '{word}' in {table}")
+                })?;
+
+            if let Some(data_str) = result {
+                let data = variant(data_str);
+                return Ok(FetchedResult {
+                    data,
+                    is_cached: true,
+                });
+            }
+        }
+
+        // Fetch from web
+        let html = self
+            .fetch_word_html(&word)
+            .await
+            .context("Error fetching HTML")?;
+
+        if is_cjk {
+            let result = to_english(&html)?;
+            if let Some(conn) = &self.conn {
+                let data = serde_json::to_string(&result).context("Error serializing result")?;
+                conn.call(move |conn| {
+                    conn.execute(
+                        "INSERT OR REPLACE INTO to_english_results (word, data) VALUES (?1, ?2)",
+                        params![word, data],
+                    )?;
+                    Ok(())
+                })
+                .await
+                .context("Error saving to English cache")?;
+            }
+
+            Ok(FetchedResult {
+                data: TranslationData::ToEnglish(result),
+                is_cached: false,
+            })
+        } else {
+            let result = to_chinese(&html)?;
+            if let Some(conn) = &self.conn {
+                let data = serde_json::to_string(&result).context("Error serializing result")?;
+                conn.call(move |conn| {
+                    conn.execute(
+                        "INSERT OR REPLACE INTO to_chinese_results (word, data) VALUES (?1, ?2)",
+                        params![word, data],
+                    )?;
+                    Ok(())
+                })
+                .await
+                .context("Error saving to Chinese cache")?;
+            }
+
+            Ok(FetchedResult {
+                data: TranslationData::ToChinese(result),
+                is_cached: false,
+            })
+        }
+    }
+
+    async fn fetch_word_html(&self, word: &str) -> Result<String, reqwest::Error> {
+        let spinner = ProgressBar::new_spinner();
+        spinner.set_message("Fetching data...");
+        spinner.enable_steady_tick(Duration::from_millis(100));
+        spinner.set_style(
+            ProgressStyle::default_spinner()
+                .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"])
+                .template("{spinner} {msg}")
+                .unwrap(),
+        );
+
+        let url = format!("{}/result", self.base_url);
+        let response = self
+            .client
+            .get(&url)
+            .query(&[("word", word), ("lang", "en")])
+            .header(
+                reqwest::header::USER_AGENT,
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 \
+             (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+            )
+            .send()
+            .await?
+            .text()
+            .await?;
+
+        Ok(response)
+    }
+}
+
+fn contains_cjk(word: &str) -> bool {
+    word.chars()
+        .any(|ch| ('\u{4E00}'..='\u{9FFF}').contains(&ch))
+}
+
+pub fn output_chinese(result: &ToChinese) -> Result<String> {
+    let mut output = String::new();
+
+    if result.pronunciation.uk.is_some() || result.pronunciation.us.is_some() {
+        writeln!(output, "{}", "# Pronunciation".bright_black())?;
+
+        if let Some(ref uk) = result.pronunciation.uk {
+            writeln!(output, "英：[{}]", uk.green())?;
+        }
+
+        if let Some(ref us) = result.pronunciation.us {
+            writeln!(output, "美：[{}]", us.green())?;
+        }
+
+        writeln!(output)?;
+    }
+
+    if !result.meanings.is_empty() {
+        writeln!(output, "{}", "# Meanings".bright_black())?;
+        for me in &result.meanings {
+            if let Some(ref pa) = me.part_of_speech {
+                writeln!(output, "[{pa}]")?;
+            }
+            for de in &me.definitions {
+                writeln!(output, "* {}", de.green())?;
+            }
+            writeln!(output)?;
+        }
+    }
+
+    if !result.examples.is_empty() {
+        writeln!(output, "{}", "# Examples".bright_black())?;
+        for ex in &result.examples {
+            writeln!(output, "* {}", ex.en.green())?;
+            writeln!(output, "  {}", ex.zh.magenta())?;
+        }
+        writeln!(output)?;
+    }
+
+    Ok(output.trim_end().to_string())
+}
+
+pub fn output_english(result: &ToEnglish) -> Result<String> {
+    let mut output = String::new();
+
+    if !result.meanings.is_empty() {
+        writeln!(output, "{}", "# Meanings".bright_black())?;
+        for me in &result.meanings {
+            writeln!(output, "* {}", me.green())?;
+        }
+        writeln!(output)?;
+    }
+
+    if !result.examples.is_empty() {
+        writeln!(output, "{}", "# Examples".bright_black())?;
+        for ex in &result.examples {
+            writeln!(output, "* {}", ex.en.green())?;
+            writeln!(output, "  {}", ex.zh.magenta())?;
+        }
+        writeln!(output)?;
+    }
+
+    Ok(output.trim_end().to_string())
+}
+
+pub fn output_chinese_plain(result: &ToChinese) -> Result<String> {
+    let mut output = String::new();
+
+    if result.pronunciation.uk.is_some() || result.pronunciation.us.is_some() {
+        writeln!(output, "# Pronunciation")?;
+
+        if let Some(ref uk) = result.pronunciation.uk {
+            writeln!(output, "英：[{uk}]")?;
+        }
+
+        if let Some(ref us) = result.pronunciation.us {
+            writeln!(output, "美：[{us}]")?;
+        }
+
+        writeln!(output)?;
+    }
+
+    if !result.meanings.is_empty() {
+        writeln!(output, "# Meanings")?;
+        for me in &result.meanings {
+            if let Some(ref pa) = me.part_of_speech {
+                writeln!(output, "[{pa}]")?;
+            }
+            for de in &me.definitions {
+                writeln!(output, "* {de}")?;
+            }
+            writeln!(output)?;
+        }
+    }
+
+    if !result.examples.is_empty() {
+        writeln!(output, "# Examples")?;
+        for ex in &result.examples {
+            writeln!(output, "* {}", ex.en)?;
+            writeln!(output, "  {}", ex.zh)?;
+        }
+        writeln!(output)?;
+    }
+
+    Ok(output.trim_end().to_string())
+}
+
+pub fn output_english_plain(result: &ToEnglish) -> Result<String> {
+    let mut output = String::new();
+
+    if !result.meanings.is_empty() {
+        writeln!(output, "# Meanings")?;
+        for me in &result.meanings {
+            writeln!(output, "* {me}")?;
+        }
+        writeln!(output)?;
+    }
+
+    if !result.examples.is_empty() {
+        writeln!(output, "# Examples")?;
+        for ex in &result.examples {
+            writeln!(output, "* {}", ex.en)?;
+            writeln!(output, "  {}", ex.zh)?;
+        }
+        writeln!(output)?;
+    }
+
+    Ok(output.trim_end().to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use assert_cmd::Command;
+    use mockito::{Matcher, Server};
+    use predicates::prelude::*;
+
+    #[test]
+    fn test_contains_cjk_with_cjk() {
+        assert!(contains_cjk("你好"));
+    }
+
+    #[test]
+    fn test_contains_cjk_without_cjk() {
+        assert!(!contains_cjk("hello"));
+    }
+
+    #[test]
+    fn test_contains_cjk_mixed_input() {
+        assert!(contains_cjk("hello你好"));
+    }
+
+    #[test]
+    fn test_contains_cjk_empty() {
+        assert!(!contains_cjk(""));
+    }
+
+    #[test]
+    fn test_cmd_stdin_empty() -> Result<(), Box<dyn std::error::Error>> {
+        let mut cmd = Command::cargo_bin("rdict")?;
+        cmd.write_stdin("")
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains("No word specified"));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_fetch_word_html_success_with_mock_server() {
+        let mut server = Server::new_async().await;
+
+        let mock = server
+            .mock("GET", "/result")
+            .match_query(Matcher::AllOf(vec![
+                Matcher::UrlEncoded("word".into(), "hello".into()),
+                Matcher::UrlEncoded("lang".into(), "en".into()),
+            ]))
+            .with_status(200)
+            .with_body(include_str!("fixtures/hello_response.html"))
+            .create();
+
+        let rdict = Rdict {
+            client: Client::new(),
+            base_url: server.url(),
+            conn: None,
+            format: Format::MarkdownColored,
+        };
+
+        let html = rdict.fetch_word_html("hello").await.unwrap();
+        assert!(html.contains("Hello"));
+        mock.assert();
+    }
+}

@@ -1,0 +1,20 @@
+[package]
+name = "rdict_telegram"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "rdict-telegram"
+path = "src/main.rs"
+
+[dependencies]
+pretty_env_logger = { version = "0.5.0" }
+teloxide = { version = "0.15.0", default-features = false, features = [
+  "macros",
+  "rustls",
+  "ctrlc_handler",
+] }
+tokio = { version = "1.8", features = ["rt-multi-thread", "macros"] }
+log = { version = "0.4" }
+rdict_core = { path = "../rdict-core" }
+anyhow = "1.0.98"

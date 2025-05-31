@@ -16,6 +16,11 @@ on:
 jobs:
   nix_check:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        packages:
+          - rdict
+          - rdict-telegram
     steps:
       - uses: actions/checkout@v4
         with:
@@ -27,4 +32,4 @@ jobs:
               substituters = http://127.0.0.1:3000/ https://cache.nixos.org/
       - uses: NickCao/github-actions-cache@7f1d29fa10061e17af4301b40918a7500cf83f52
       - run: nix flake check
-      - run: nix build --print-build-logs
+      - run: nix build .#${{ matrix.packages }} --print-build-logs
