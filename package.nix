@@ -1,18 +1,43 @@
 { lib, rustPlatform }:
-rustPlatform.buildRustPackage {
-  pname = "rdict";
-  version = "0.1.0";
+rec {
+  default = rdict;
+  rdict = rustPlatform.buildRustPackage {
+    pname = "rdict";
+    version = "0.1.0";
 
-  src = lib.cleanSource ./.;
+    src = lib.cleanSource ./.;
 
-  useFetchCargoVendor = true;
-  cargoHash = "sha256-BT0+N3PK+d20RLEhPRhcrZ6F9sZ63OmyOWdjdVq48Mk=";
+    useFetchCargoVendor = true;
+    cargoHash = "sha256-yoEdAB82lVqzn+GSTPi4FMa+xaNUdejPOKn7ccrpk2U=";
 
-  preCheck = ''
-    export HOME="$(mktemp -d)"
-  '';
+    buildAndTestSubdir = "./rdict-cli";
 
-  meta = {
-    license = lib.licenses.mit;
+    preCheck = ''
+      export HOME="$(mktemp -d)"
+    '';
+
+    meta = {
+      license = lib.licenses.mit;
+    };
+  };
+
+  rdict-telegram = rustPlatform.buildRustPackage {
+    pname = "rdict";
+    version = "0.1.0";
+
+    src = lib.cleanSource ./.;
+
+    useFetchCargoVendor = true;
+    cargoHash = "sha256-yoEdAB82lVqzn+GSTPi4FMa+xaNUdejPOKn7ccrpk2U=";
+
+    buildAndTestSubdir = "./rdict-telegram";
+
+    preCheck = ''
+      export HOME="$(mktemp -d)"
+    '';
+
+    meta = {
+      license = lib.licenses.mit;
+    };
   };
 }

@@ -4,15 +4,16 @@ use indicatif::{ProgressBar, ProgressStyle};
 use owo_colors::OwoColorize;
 use reqwest::Client;
 use rustyline::DefaultEditor;
+use sqlx::Row;
+use sqlx::sqlite::SqlitePool;
 use std::fmt::Write;
 use std::fs;
 use std::time::Duration;
-use tokio_rusqlite::{Connection, params};
 
 pub struct Rdict {
     client: Client,
     base_url: String,
-    conn: Option<tokio_rusqlite::Connection>,
+    pool: Option<SqlitePool>,
     format: Format,
 }
 
@@ -37,7 +38,7 @@ impl Rdict {
         format: Format,
         cache_db_path: Option<std::path::PathBuf>,
     ) -> Result<Self> {
-        let conn: Option<Connection> = if cache_db_path.is_some() {
+        let pool: Option<SqlitePool> = if cache_db_path.is_some() {
             let db_path = cache_db_path.unwrap();
             let should_init_db = !db_path.exists();
 
@@ -47,9 +48,11 @@ impl Rdict {
                 })?;
             }
 
-            let conn = Connection::open(&db_path)
-                .await
-                .with_context(|| format!("Failed to open database at {}", db_path.display()))?;
+            let pool = SqlitePool::connect(db_path.to_str().with_context(|| {
+                format!("Failed to convert path to string: {}", db_path.display())
+            })?)
+            .await
+            .with_context(|| format!("Failed to open database at {}", db_path.display()))?;
 
             if should_init_db {
                 let init_statements = [
@@ -63,24 +66,20 @@ impl Rdict {
                 );",
                 ];
 
-                let _ = conn
-                    .call(move |conn| {
-                        for statement in init_statements {
-                            conn.execute(statement, ())?;
-                        }
-
-                        Ok(())
-                    })
-                    .await
-                    .with_context(|| {
-                        format!(
-                            "Failed to initialize SQLite cache database: {}",
-                            db_path.display()
-                        )
-                    });
+                for statement in init_statements {
+                    sqlx::query(statement)
+                        .execute(&pool)
+                        .await
+                        .with_context(|| {
+                            format!(
+                                "Failed to initialize SQLite cache database: {}",
+                                db_path.display()
+                            )
+                        })?;
+                }
             }
 
-            Some(conn)
+            Some(pool)
         } else {
             None
         };
@@ -88,7 +87,7 @@ impl Rdict {
         Ok(Self {
             client: Client::new(),
             base_url: base_url.to_owned(),
-            conn,
+            pool,
             format,
         })
     }
@@ -169,7 +168,7 @@ impl Rdict {
         let is_cjk = contains_cjk(&word);
 
         // Try cache first
-        if let Some(conn) = &self.conn {
+        if let Some(pool) = &self.pool {
             let (table, variant): (&str, fn(String) -> TranslationData) = if is_cjk {
                 ("to_english_results", |v| {
                     TranslationData::ToEnglish(serde_json::from_str(&v).unwrap())
@@ -180,25 +179,17 @@ impl Rdict {
                 })
             };
             let word_for_query = word.clone();
-            let result: Option<String> = conn
-                .call(move |conn| {
-                    let mut stmt =
-                        conn.prepare(&format!("SELECT data FROM {table} WHERE word = ?1"))?;
-                    let mut rows = stmt.query([word_for_query])?;
-
-                    if let Some(row) = rows.next()? {
-                        let data: String = row.get(0)?;
-                        Ok(Some(data))
-                    } else {
-                        Ok(None)
-                    }
-                })
+            let query = format!("SELECT data FROM {table} WHERE word = ?");
+            let result = sqlx::query(&query)
+                .bind(&word_for_query)
+                .fetch_optional(pool)
                 .await
                 .with_context(|| {
                     format!("Failed to look up cached translation for '{word}' in {table}")
                 })?;
 
-            if let Some(data_str) = result {
+            if let Some(row) = result {
+                let data_str: String = row.try_get("data")?;
                 let data = variant(data_str);
                 return Ok(FetchedResult {
                     data,
@@ -215,17 +206,15 @@ impl Rdict {
 
         if is_cjk {
             let result = to_english(&html)?;
-            if let Some(conn) = &self.conn {
+            if let Some(pool) = &self.pool {
                 let data = serde_json::to_string(&result).context("Error serializing result")?;
-                conn.call(move |conn| {
-                    conn.execute(
-                        "INSERT OR REPLACE INTO to_english_results (word, data) VALUES (?1, ?2)",
-                        params![word, data],
-                    )?;
-                    Ok(())
-                })
-                .await
-                .context("Error saving to English cache")?;
+
+                sqlx::query("INSERT OR REPLACE INTO to_english_results (word, data) VALUES (?, ?)")
+                    .bind(word)
+                    .bind(&data)
+                    .execute(pool)
+                    .await
+                    .context("Error saving to English cache")?;
             }
 
             Ok(FetchedResult {
@@ -234,17 +223,15 @@ impl Rdict {
             })
         } else {
             let result = to_chinese(&html)?;
-            if let Some(conn) = &self.conn {
+            if let Some(pool) = &self.pool {
                 let data = serde_json::to_string(&result).context("Error serializing result")?;
-                conn.call(move |conn| {
-                    conn.execute(
-                        "INSERT OR REPLACE INTO to_chinese_results (word, data) VALUES (?1, ?2)",
-                        params![word, data],
-                    )?;
-                    Ok(())
-                })
-                .await
-                .context("Error saving to Chinese cache")?;
+
+                sqlx::query("INSERT OR REPLACE INTO to_chinese_results (word, data) VALUES (?, ?)")
+                    .bind(word)
+                    .bind(&data)
+                    .execute(pool)
+                    .await
+                    .context("Error saving to Chinese cache")?;
             }
 
             Ok(FetchedResult {
@@ -474,7 +461,7 @@ mod tests {
         let rdict = Rdict {
             client: Client::new(),
             base_url: server.url(),
-            conn: None,
+            pool: None,
             format: Format::MarkdownColored,
         };
 

@@ -22,7 +22,9 @@
           ];
         };
 
-        packages.default = pkgs.callPackage ./package.nix { };
+        packages = {
+          inherit ((pkgs.callPackage ./package.nix { })) default rdict rdict-telegram;
+        };
       }
     );
 }
