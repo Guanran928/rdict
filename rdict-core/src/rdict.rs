@@ -5,6 +5,7 @@ use owo_colors::OwoColorize;
 use reqwest::Client;
 use rustyline::DefaultEditor;
 use sqlx::Row;
+use sqlx::migrate::MigrateDatabase;
 use sqlx::sqlite::SqlitePool;
 use std::fmt::Write;
 use std::fs;
@@ -48,11 +49,17 @@ impl Rdict {
                 })?;
             }
 
-            let pool = SqlitePool::connect(db_path.to_str().with_context(|| {
+            let db_url = db_path.to_str().with_context(|| {
                 format!("Failed to convert path to string: {}", db_path.display())
-            })?)
-            .await
-            .with_context(|| format!("Failed to open database at {}", db_path.display()))?;
+            })?;
+
+            if !sqlx::Sqlite::database_exists(db_url).await? {
+                sqlx::Sqlite::create_database(db_url).await?;
+            }
+
+            let pool = SqlitePool::connect(db_url)
+                .await
+                .with_context(|| format!("Failed to open database at {}", db_path.display()))?;
 
             if should_init_db {
                 let init_statements = [
