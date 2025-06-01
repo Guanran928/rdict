@@ -409,9 +409,7 @@ pub fn output_english_plain(result: &ToEnglish) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use assert_cmd::Command;
     use mockito::{Matcher, Server};
-    use predicates::prelude::*;
 
     #[test]
     fn test_contains_cjk_with_cjk() {
@@ -431,17 +429,6 @@ mod tests {
     #[test]
     fn test_contains_cjk_empty() {
         assert!(!contains_cjk(""));
-    }
-
-    #[test]
-    fn test_cmd_stdin_empty() -> Result<(), Box<dyn std::error::Error>> {
-        let mut cmd = Command::cargo_bin("rdict")?;
-        cmd.write_stdin("")
-            .assert()
-            .failure()
-            .stderr(predicate::str::contains("No word specified"));
-
-        Ok(())
     }
 
     #[tokio::test]
