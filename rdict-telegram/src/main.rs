@@ -51,8 +51,10 @@ async fn answer(bot: Bot, msg: Message, cmd: Command) -> ResponseResult<()> {
 
                     match output_result {
                         Ok(output) => {
-                            let wrapped_output =
-                                format!("<pre language=\"c++\">\n{output}\n</pre>");
+                            let wrapped_output = format!(
+                                "<pre><code class=\"language-markdown\">{}</code></pre>",
+                                html_escape::encode_text(&output)
+                            );
                             bot.send_message(msg.chat.id, wrapped_output)
                                 .reply_to(msg)
                                 .parse_mode(ParseMode::Html)

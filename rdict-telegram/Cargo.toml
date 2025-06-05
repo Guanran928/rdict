@@ -18,3 +18,4 @@ tokio = { version = "1.8", features = ["rt-multi-thread", "macros"] }
 log = { version = "0.4" }
 rdict_core = { path = "../rdict-core" }
 anyhow = "1.0.98"
+html-escape = "0.2.13"
