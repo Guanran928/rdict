@@ -1,6 +1,6 @@
 use anyhow::Result;
 use rdict_core::parse::TranslationData;
-use rdict_core::rdict::{self, Format, Rdict};
+use rdict_core::rdict::{self, Rdict};
 use teloxide::sugar::request::RequestReplyExt;
 use teloxide::types::ParseMode;
 use teloxide::{prelude::*, utils::command::BotCommands};
@@ -37,9 +37,7 @@ async fn answer(bot: Bot, msg: Message, cmd: Command) -> ResponseResult<()> {
                 .await?
         }
         Command::Translate(text) => {
-            let rdict = Rdict::new("https://m.youdao.com", Format::Markdown, None)
-                .await
-                .unwrap();
+            let rdict = Rdict::new("https://m.youdao.com", None).await.unwrap();
             let res = rdict.get_results(&text).await;
 
             match res {

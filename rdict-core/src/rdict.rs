@@ -1,21 +1,17 @@
 use crate::parse::{ToChinese, ToEnglish, TranslationData, to_chinese, to_english};
 use anyhow::{Context, Result};
-use indicatif::{ProgressBar, ProgressStyle};
 use owo_colors::OwoColorize;
 use reqwest::Client;
-use rustyline::DefaultEditor;
 use sqlx::Row;
 use sqlx::migrate::MigrateDatabase;
 use sqlx::sqlite::SqlitePool;
 use std::fmt::Write;
 use std::fs;
-use std::time::Duration;
 
 pub struct Rdict {
     client: Client,
     base_url: String,
     pool: Option<SqlitePool>,
-    format: Format,
 }
 
 #[derive(Debug)]
@@ -34,11 +30,7 @@ pub struct FetchedResult {
 }
 
 impl Rdict {
-    pub async fn new(
-        base_url: &str,
-        format: Format,
-        cache_db_path: Option<std::path::PathBuf>,
-    ) -> Result<Self> {
+    pub async fn new(base_url: &str, cache_db_path: Option<std::path::PathBuf>) -> Result<Self> {
         let pool: Option<SqlitePool> = if cache_db_path.is_some() {
             let db_path = cache_db_path.unwrap();
             let should_init_db = !db_path.exists();
@@ -95,79 +87,7 @@ impl Rdict {
             client: Client::new(),
             base_url: base_url.to_owned(),
             pool,
-            format,
         })
-    }
-
-    pub async fn interactive_mode(&self) -> rustyline::Result<()> {
-        let mut rl = DefaultEditor::new()?;
-        loop {
-            let readline = if cfg!(target_family = "windows") {
-                rl.readline("[rdict]# ")
-            } else {
-                rl.readline(format!("{}# ", "[rdict]".green()).as_str())
-            };
-            match readline {
-                Ok(line) => {
-                    if !line.is_empty() {
-                        rl.add_history_entry(line.as_str())?;
-                        let word = line.as_str().trim();
-                        if let Err(err) = Self::output_results(self, word).await {
-                            println!("Error: {err:?}");
-                        }
-                    }
-                }
-                Err(err) => {
-                    println!("Error: {err:?}");
-                    break;
-                }
-            }
-        }
-        Ok(())
-    }
-
-    pub async fn output_results(&self, word: &str) -> Result<()> {
-        let result = self.get_results(word).await?;
-
-        match self.format {
-            Format::Json => println!("{}", serde_json::to_string_pretty(&result.data)?),
-            Format::MarkdownColored => {
-                let output = match &result.data {
-                    TranslationData::ToChinese(tc) => output_chinese(tc)?,
-                    TranslationData::ToEnglish(te) => output_english(te)?,
-                };
-                let indented: String = output
-                    .lines()
-                    .map(|line| format!("  {line}"))
-                    .collect::<Vec<_>>()
-                    .join("\n");
-
-                println!("\n{indented}\n");
-
-                if result.is_cached {
-                    println!("  {}\n", format!("[ {word} ] From cache").bright_black());
-                }
-            }
-            Format::Markdown => {
-                let output = match &result.data {
-                    TranslationData::ToChinese(tc) => output_chinese_plain(tc)?,
-                    TranslationData::ToEnglish(te) => output_english_plain(te)?,
-                };
-                let indented: String = output
-                    .lines()
-                    .map(|line| format!("  {line}"))
-                    .collect::<Vec<_>>()
-                    .join("\n");
-
-                println!("\n{indented}\n");
-
-                if result.is_cached {
-                    println!("  {}\n", format!("[ {word} ] From cache").bright_black());
-                }
-            }
-        }
-
-        Ok(())
     }
 
     pub async fn get_results(&self, word: &str) -> Result<FetchedResult> {
@@ -249,16 +169,6 @@ impl Rdict {
     }
 
     async fn fetch_word_html(&self, word: &str) -> Result<String, reqwest::Error> {
-        let spinner = ProgressBar::new_spinner();
-        spinner.set_message("Fetching data...");
-        spinner.enable_steady_tick(Duration::from_millis(100));
-        spinner.set_style(
-            ProgressStyle::default_spinner()
-                .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"])
-                .template("{spinner} {msg}")
-                .unwrap(),
-        );
-
         let url = format!("{}/result", self.base_url);
         let response = self
             .client
@@ -456,7 +366,6 @@ mod tests {
             client: Client::new(),
             base_url: server.url(),
             pool: None,
-            format: Format::MarkdownColored,
         };
 
         let html = rdict.fetch_word_html("hello").await.unwrap();

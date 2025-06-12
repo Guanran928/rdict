@@ -2159,12 +2159,10 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "assert_cmd",
- "indicatif",
  "mockito",
  "owo-colors",
  "predicates",
  "reqwest",
- "rustyline",
  "scraper",
  "serde",
  "serde_json",
