@@ -16,7 +16,7 @@ pub struct Rdict {
 
 #[derive(Debug)]
 pub enum Format {
-    /// Markdown with ANSI color escape sequenses
+    /// Markdown with ANSI color escape sequences
     MarkdownColored,
     /// Plain Markdown
     Markdown,

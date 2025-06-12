@@ -1,7 +1,7 @@
 mod args;
 
 use crate::args::Args;
-use anyhow::{Context, Result, anyhow, ensure};
+use anyhow::{Context, Result, ensure};
 use clap::Parser;
 use directories_next::ProjectDirs;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -14,12 +14,16 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 struct App {
+    /// Format used to output translation data
     format: Format,
+    /// Rdict client
     client: Rdict,
+    /// Command-line arguments handled by `clap`
     cli: Args,
 }
 
 impl App {
+    /// Initializes the `rdict_cli` application
     async fn new(cli: Args) -> Result<Self> {
         let format = if cli.json {
             Format::Json
@@ -31,7 +35,7 @@ impl App {
             None
         } else {
             let proj_dirs = ProjectDirs::from("dev", "ny4", "rdict")
-                .ok_or_else(|| anyhow!("Could not determine project directory"))?;
+                .context("Could not determine project directory")?;
             Some(proj_dirs.cache_dir().join("cache.db"))
         };
 
@@ -44,6 +48,9 @@ impl App {
         })
     }
 
+    /// Runs `rdict_cli`
+    ///
+    /// Enters interactive mode if `input_text` is not provided by command-line argument or piping.
     async fn run(&self) -> Result<()> {
         let stdin_is_piped = !io::stdin().is_terminal();
 
@@ -66,9 +73,12 @@ impl App {
         Ok(())
     }
 
+    /// Runs `rdict_cli` in interactive mode
     async fn interactive_mode(&self) -> rustyline::Result<()> {
         let mut rl = DefaultEditor::new()?;
         loop {
+            // HACK:
+            // I don't have a Windows machine to fix https://github.com/kkawakam/rustyline/issues/562
             let readline = if cfg!(target_family = "windows") {
                 rl.readline("[rdict]# ")
             } else {
@@ -93,6 +103,7 @@ impl App {
         Ok(())
     }
 
+    /// Formats and outputs `word` in different format provided when initialized
     async fn output_results(&self, word: &str) -> Result<()> {
         let spinner = ProgressBar::new_spinner();
         spinner.set_message("Fetching data...");
