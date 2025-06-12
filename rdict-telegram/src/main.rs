@@ -37,14 +37,15 @@ async fn answer(bot: Bot, msg: Message, cmd: Command) -> ResponseResult<()> {
                 .await?
         }
         Command::Translate(text) => {
-            let rdict = Rdict::new("https://m.youdao.com", None).await.unwrap();
-            let res = rdict.get_results(&text).await;
+            // TODO: Don't create a `rdict` client on every request
+            let client = Rdict::new("https://m.youdao.com", None).await.unwrap();
+            let res = client.get_results(&text).await;
 
             match res {
                 Ok(result) => {
                     let output_result = match result.data {
-                        TranslationData::ToChinese(tc) => rdict::output_chinese_plain(&tc),
-                        TranslationData::ToEnglish(te) => rdict::output_english_plain(&te),
+                        TranslationData::ToChinese(tc) => rdict::render_chinese_plain(&tc),
+                        TranslationData::ToEnglish(te) => rdict::render_english_plain(&te),
                     };
 
                     match output_result {

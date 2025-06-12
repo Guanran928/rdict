@@ -7,7 +7,7 @@ use directories_next::ProjectDirs;
 use indicatif::{ProgressBar, ProgressStyle};
 use owo_colors::OwoColorize;
 use rdict_core::parse::TranslationData;
-use rdict_core::rdict::{Format, Rdict, output_chinese, output_english};
+use rdict_core::rdict::{Format, Rdict, render_chinese_colored, render_english_colored};
 use rustyline::DefaultEditor;
 use std::io::{self, IsTerminal, Read};
 use std::path::PathBuf;
@@ -54,14 +54,14 @@ impl App {
     async fn run(&self) -> Result<()> {
         let stdin_is_piped = !io::stdin().is_terminal();
 
-        match &self.cli.word {
-            Some(word) => self.output_results(word).await?,
+        match &self.cli.input_text {
+            Some(input_text) => self.output_results(input_text).await?,
             None if stdin_is_piped => {
                 let mut buffer = String::new();
                 io::stdin().read_to_string(&mut buffer)?;
-                let word = buffer.trim();
-                ensure!(!word.is_empty(), "No word specified");
-                self.output_results(word).await?;
+                let input_text = buffer.trim();
+                ensure!(!input_text.is_empty(), "No input_text specified");
+                self.output_results(input_text).await?;
             }
             _ => {
                 self.interactive_mode()
@@ -88,8 +88,8 @@ impl App {
                 Ok(line) => {
                     if !line.is_empty() {
                         rl.add_history_entry(line.as_str())?;
-                        let word = line.trim();
-                        if let Err(err) = self.output_results(word).await {
+                        let input_text = line.trim();
+                        if let Err(err) = self.output_results(input_text).await {
                             println!("Error: {err:?}");
                         }
                     }
@@ -103,8 +103,8 @@ impl App {
         Ok(())
     }
 
-    /// Formats and outputs `word` in different format provided when initialized
-    async fn output_results(&self, word: &str) -> Result<()> {
+    /// Formats and outputs `input_text` in different format provided when initialized
+    async fn output_results(&self, input_text: &str) -> Result<()> {
         let spinner = ProgressBar::new_spinner();
         spinner.set_message("Fetching data...");
         spinner.enable_steady_tick(Duration::from_millis(100));
@@ -115,14 +115,14 @@ impl App {
                 .unwrap(),
         );
 
-        let result = self.client.get_results(word).await?;
+        let result = self.client.get_results(input_text).await?;
         spinner.finish_and_clear();
 
         match self.format {
             Format::MarkdownColored => {
                 let output = match &result.data {
-                    TranslationData::ToChinese(tc) => output_chinese(tc)?,
-                    TranslationData::ToEnglish(te) => output_english(te)?,
+                    TranslationData::ToChinese(tc) => render_chinese_colored(tc)?,
+                    TranslationData::ToEnglish(te) => render_english_colored(te)?,
                 };
                 let indented: String = output
                     .lines()
@@ -133,7 +133,10 @@ impl App {
                 println!("\n{indented}\n");
 
                 if result.is_cached {
-                    println!("  {}\n", format!("[ {word} ] From cache").bright_black());
+                    println!(
+                        "  {}\n",
+                        format!("[ {input_text} ] From cache").bright_black()
+                    );
                 }
             }
             Format::Json => println!("{}", serde_json::to_string_pretty(&result.data)?),

@@ -193,7 +193,7 @@ fn contains_cjk(word: &str) -> bool {
         .any(|ch| ('\u{4E00}'..='\u{9FFF}').contains(&ch))
 }
 
-pub fn output_chinese(result: &ToChinese) -> Result<String> {
+pub fn render_chinese_colored(result: &ToChinese) -> Result<String> {
     let mut output = String::new();
 
     if result.pronunciation.uk.is_some() || result.pronunciation.us.is_some() {
@@ -235,7 +235,7 @@ pub fn output_chinese(result: &ToChinese) -> Result<String> {
     Ok(output.trim_end().to_string())
 }
 
-pub fn output_english(result: &ToEnglish) -> Result<String> {
+pub fn render_english_colored(result: &ToEnglish) -> Result<String> {
     let mut output = String::new();
 
     if !result.meanings.is_empty() {
@@ -258,7 +258,7 @@ pub fn output_english(result: &ToEnglish) -> Result<String> {
     Ok(output.trim_end().to_string())
 }
 
-pub fn output_chinese_plain(result: &ToChinese) -> Result<String> {
+pub fn render_chinese_plain(result: &ToChinese) -> Result<String> {
     let mut output = String::new();
 
     if result.pronunciation.uk.is_some() || result.pronunciation.us.is_some() {
@@ -300,7 +300,7 @@ pub fn output_chinese_plain(result: &ToChinese) -> Result<String> {
     Ok(output.trim_end().to_string())
 }
 
-pub fn output_english_plain(result: &ToEnglish) -> Result<String> {
+pub fn render_english_plain(result: &ToEnglish) -> Result<String> {
     let mut output = String::new();
 
     if !result.meanings.is_empty() {
@@ -362,13 +362,9 @@ mod tests {
             .with_body(include_str!("fixtures/hello_response.html"))
             .create();
 
-        let rdict = Rdict {
-            client: Client::new(),
-            base_url: server.url(),
-            pool: None,
-        };
+        let client = Rdict::new(&server.url(), None).await.unwrap();
 
-        let html = rdict.fetch_word_html("hello").await.unwrap();
+        let html = client.fetch_word_html("hello").await.unwrap();
         assert!(html.contains("Hello"));
         mock.assert();
     }
