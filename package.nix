@@ -1,6 +1,6 @@
 { lib, rustPlatform }:
 let
-  cargoHash = "sha256-kTmN33oFodggtIwZo1Ex4slRSfYoYVOl7JVWxouVNOI=";
+  cargoHash = "sha256-9AsvTTPM4ru88DGIHkxSWfhBEsRhovTQoWNHUUKpllE=";
 in
 rec {
   default = rdict;
@@ -8,7 +8,7 @@ rec {
     inherit cargoHash;
 
     pname = "rdict";
-    version = "0.1.0";
+    version = "0.2.0";
 
     src = lib.cleanSource ./.;
 
@@ -28,7 +28,7 @@ rec {
     inherit cargoHash;
 
     pname = "rdict-telegram";
-    version = "0.1.0";
+    version = "0.2.0";
 
     src = lib.cleanSource ./.;
 

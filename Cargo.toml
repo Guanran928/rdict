@@ -3,7 +3,7 @@ resolver = "3"
 members = ["rdict-core", "rdict-cli", "rdict-telegram"]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Guanran Wang <guanran928@outlook.com>"]
 description = "Youdao dictionary client written in Rust"
 edition = "2024"
