@@ -42,24 +42,48 @@ impl Pager {
     }
 
     fn handle_key_event(&mut self, key: KeyEvent) {
+        const LINE_STEP: usize = 1;
+        const PAGE_STEP: usize = 8;
+        const SCROLL_MARGIN: usize = 4;
+
+        let max_scroll = self.text.lines().count();
+
         match (key.code, key.modifiers) {
             (KeyCode::Char('q'), KeyModifiers::NONE) => self.exit(),
 
-            // FIXME: hardcoded value, replace 4 with screen height
+            // Next line
             (KeyCode::Char('j'), KeyModifiers::NONE)
             | (KeyCode::Down, KeyModifiers::NONE)
-            | (KeyCode::Char('n'), KeyModifiers::CONTROL)
-                if self.vertical_scroll + 4 < self.text.lines().count() =>
-            {
-                self.vertical_scroll += 1;
+            | (KeyCode::Char('n'), KeyModifiers::CONTROL) => {
+                self.vertical_scroll = (self.vertical_scroll + LINE_STEP).min(max_scroll);
             }
 
+            // Previous line
             (KeyCode::Char('k'), KeyModifiers::NONE)
             | (KeyCode::Up, KeyModifiers::NONE)
-            | (KeyCode::Char('p'), KeyModifiers::CONTROL)
-                if self.vertical_scroll > 0 =>
-            {
-                self.vertical_scroll -= 1;
+            | (KeyCode::Char('p'), KeyModifiers::CONTROL) => {
+                self.vertical_scroll = self.vertical_scroll.saturating_sub(LINE_STEP);
+            }
+
+            // Next page
+            (KeyCode::Char('d'), KeyModifiers::NONE) | (KeyCode::PageDown, KeyModifiers::NONE) => {
+                self.vertical_scroll = (self.vertical_scroll + PAGE_STEP)
+                    .min(max_scroll.saturating_sub(SCROLL_MARGIN));
+            }
+
+            // Previous page
+            (KeyCode::Char('u'), KeyModifiers::NONE) | (KeyCode::PageUp, KeyModifiers::NONE) => {
+                self.vertical_scroll = self.vertical_scroll.saturating_sub(PAGE_STEP);
+            }
+
+            // Bottom
+            (KeyCode::Char('G'), KeyModifiers::SHIFT) | (KeyCode::End, KeyModifiers::NONE) => {
+                self.vertical_scroll = max_scroll.saturating_sub(SCROLL_MARGIN);
+            }
+
+            // Top
+            (KeyCode::Char('g'), KeyModifiers::NONE) | (KeyCode::Home, KeyModifiers::NONE) => {
+                self.vertical_scroll = 0;
             }
 
             _ => {}
