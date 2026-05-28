@@ -9,9 +9,10 @@ use iced::font;
 use iced::widget::{button, column, container, pick_list, row, space, text, text_input};
 use iced::window::Settings;
 use iced::{Alignment, Element, Font, Length, Size, Task};
-use rdict_core::model::Language;
+use rdict_core::model::{Language, Voice};
 use rdict_core::rdict::TranslationData;
 use rdict_core::rdict::{FetchedResult, Rdict};
+use std::io::Cursor;
 
 use crate::components::list_item;
 
@@ -39,6 +40,8 @@ enum Message {
     Submit,
     TranslationResult(FetchedResult),
     TranslationError(String),
+    PlayVoice(Voice),
+    VoicePlayed(Result<(), String>),
 }
 
 fn main() -> Result<()> {
@@ -100,6 +103,17 @@ fn update(state: &mut State, message: Message) -> Task<Message> {
             state.translation_result = TranslationState::Error(err);
             Task::none()
         }
+        Message::PlayVoice(voice) => Task::perform(
+            async move { play_voice(voice).await.map_err(|e| e.to_string()) },
+            Message::VoicePlayed,
+        ),
+        Message::VoicePlayed(result) => {
+            if let Err(error) = result {
+                eprintln!("Voice playback failed: {error}");
+            }
+
+            Task::none()
+        }
     }
 }
 
@@ -131,14 +145,14 @@ fn view(state: &State) -> Element<'_, Message> {
             .into(),
 
         TranslationState::Translation(fetched_result) => match &fetched_result.data {
-            TranslationData::FromEnglish(tc) => render::en::to_chinese(tc),
+            TranslationData::FromEnglish(tc) => render::en::to_chinese(tc, &fetched_result.voices),
             TranslationData::ToEnglish(te) => render::en::to_english(te),
 
-            TranslationData::FromFrench(tc) => render::fr::to_chinese(tc),
+            TranslationData::FromFrench(tc) => render::fr::to_chinese(tc, &fetched_result.voices),
             TranslationData::ToFrench(te) => render::fr::to_french(te),
             TranslationData::FromKorean(tc) => render::ko::to_chinese(tc),
             TranslationData::ToKorean(te) => render::ko::to_korean(te),
-            TranslationData::FromJapanese(tc) => render::ja::to_chinese(tc),
+            TranslationData::FromJapanese(tc) => render::ja::to_chinese(tc, &fetched_result.voices),
             TranslationData::ToJapanese(te) => render::ja::to_japanese(te),
 
             TranslationData::NotFound(nf) => {
@@ -222,4 +236,22 @@ async fn fetch_translation(
     };
 
     client.get_results(&text_input_content, language).await
+}
+
+async fn play_voice(voice: Voice) -> Result<()> {
+    let client = Rdict::new("https://m.youdao.com", None).await?;
+    let bytes = client.fetch_voice(&voice).await?;
+
+    tokio::task::spawn_blocking(move || -> Result<()> {
+        let mut stream = rodio::DeviceSinkBuilder::open_default_sink()?;
+        stream.log_on_drop(false);
+
+        let player = rodio::play(stream.mixer(), Cursor::new(bytes))?;
+        player.sleep_until_end();
+
+        Ok(())
+    })
+    .await??;
+
+    Ok(())
 }

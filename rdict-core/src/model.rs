@@ -36,3 +36,39 @@ impl fmt::Display for Language {
         }
     }
 }
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct Voice {
+    pub label: String,
+    pub url: String,
+}
+
+impl Voice {
+    #[must_use]
+    pub fn english(label: &str, text: &str, kind: &str) -> Self {
+        Self::youdao(label, text, &[("type", kind)])
+    }
+
+    #[must_use]
+    pub fn language(label: &str, text: &str, le: &str) -> Self {
+        Self::youdao(label, text, &[("le", le)])
+    }
+
+    fn youdao(label: &str, text: &str, params: &[(&str, &str)]) -> Self {
+        let mut url =
+            reqwest::Url::parse("https://dict.youdao.com/dictvoice").expect("valid voice URL");
+
+        {
+            let mut query = url.query_pairs_mut();
+            query.append_pair("audio", text);
+            for (key, value) in params {
+                query.append_pair(key, value);
+            }
+        }
+
+        Self {
+            label: label.to_owned(),
+            url: url.to_string(),
+        }
+    }
+}
