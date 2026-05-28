@@ -1,5 +1,5 @@
 use crate::Error;
-use crate::model::Language;
+use crate::model::{Language, Voice};
 use crate::parse::{DictPage, NotFound, selectors};
 use crate::parse::{en, fr, ja, ko};
 use log::{debug, info};
@@ -19,9 +19,10 @@ pub struct Rdict {
     pool: Option<SqlitePool>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FetchedResult {
     pub data: TranslationData,
+    pub voices: Vec<Voice>,
     pub is_cached: bool,
 }
 
@@ -68,6 +69,24 @@ impl TranslationData {
     }
 
     #[must_use]
+    pub fn voices(&self) -> Vec<Voice> {
+        match self {
+            Self::FromEnglish(x) => vec![
+                Voice::english("UK", &x.input_text, "1"),
+                Voice::english("US", &x.input_text, "2"),
+            ],
+            Self::ToEnglish(x) => vec![Voice::language("Chinese", &x.input_text, "zh")],
+            Self::FromFrench(x) => vec![Voice::language("French", &x.input_text, "fr")],
+            Self::ToFrench(x) => vec![Voice::language("Chinese", &x.input_text, "zh")],
+            Self::FromKorean(x) => vec![Voice::language("Korean", &x.input_text, "ko")],
+            Self::ToKorean(x) => vec![Voice::language("Chinese", &x.input_text, "zh")],
+            Self::FromJapanese(x) => vec![Voice::language("Japanese", &x.input_text, "ja")],
+            Self::ToJapanese(x) => vec![Voice::language("Chinese", &x.input_text, "zh")],
+            Self::NotFound(_) => Vec::new(),
+        }
+    }
+
+    #[must_use]
     pub fn render_colored(&self) -> String {
         self.as_render().render_colored()
     }
@@ -75,6 +94,28 @@ impl TranslationData {
     #[must_use]
     pub fn render_plain(&self) -> String {
         self.as_render().render_plain()
+    }
+}
+
+impl FetchedResult {
+    fn new(data: TranslationData, is_cached: bool) -> Self {
+        let voices = data.voices();
+
+        Self {
+            data,
+            voices,
+            is_cached,
+        }
+    }
+
+    #[must_use]
+    pub fn render_colored(&self) -> String {
+        crate::render::append_voices_colored(self.data.render_colored(), &self.voices)
+    }
+
+    #[must_use]
+    pub fn render_plain(&self) -> String {
+        crate::render::append_voices_plain(self.data.render_plain(), &self.voices)
     }
 }
 
@@ -138,10 +179,7 @@ impl Rdict {
             self.write_cache(pool, input_text, language, &data).await?;
         }
 
-        Ok(FetchedResult {
-            data,
-            is_cached: false,
-        })
+        Ok(FetchedResult::new(data, false))
     }
 
     async fn try_cache(
@@ -194,10 +232,19 @@ impl Rdict {
             return Ok(None);
         };
 
-        Ok(Some(FetchedResult {
-            data,
-            is_cached: true,
-        }))
+        Ok(Some(FetchedResult::new(data, true)))
+    }
+
+    pub async fn fetch_voice(&self, voice: &Voice) -> Result<Vec<u8>, Error> {
+        Ok(self
+            .client
+            .get(&voice.url)
+            .send()
+            .await?
+            .error_for_status()?
+            .bytes()
+            .await?
+            .to_vec())
     }
 
     async fn fetch_and_parse(

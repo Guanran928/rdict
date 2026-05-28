@@ -161,8 +161,8 @@ impl App {
         match self.format {
             Format::MarkdownColored | Format::Markdown => {
                 let output = match self.format {
-                    Format::MarkdownColored => result.data.render_colored(),
-                    Format::Markdown => result.data.render_plain(),
+                    Format::MarkdownColored => result.render_colored(),
+                    Format::Markdown => result.render_plain(),
                     _ => unreachable!(),
                 };
 
@@ -197,7 +197,7 @@ impl App {
                     println!("{indented_output}");
                 }
             }
-            Format::Json => println!("{}", serde_json::to_string_pretty(&result.data)?),
+            Format::Json => println!("{}", serde_json::to_string_pretty(&result)?),
         }
 
         Ok(())

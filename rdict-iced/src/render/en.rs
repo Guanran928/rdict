@@ -1,33 +1,35 @@
 use iced::font;
 use iced::widget::{column, container, row, scrollable, text};
 use iced::{Element, Font, Length};
+use rdict_core::model::Voice;
 use rdict_core::parse::en::{ToChinese, ToEnglish};
 
 use crate::{
     Message,
     components::{comparison, list_item, section, title},
+    render,
 };
 
-pub fn to_chinese(tc: &ToChinese) -> Element<'_, Message> {
+pub fn to_chinese<'a>(tc: &'a ToChinese, voices: &'a [Voice]) -> Element<'a, Message> {
     // Pronunciation Layout
 
-    let build_accent = |label: &'static str, value: &str| {
+    let build_accent = |label: &'static str, value: &str, voice: Option<&Voice>| {
         row![
             text(label).font(Font {
                 weight: font::Weight::Bold,
                 ..Font::default()
             }),
             " ",
-            text(format!("[{value}]")).style(text::secondary)
+            render::pronunciation(value.to_owned(), voice)
         ]
     };
 
     let mut accents = Vec::new();
     if let Some(uk) = &tc.pronunciation.uk {
-        accents.push(build_accent("英", uk).into());
+        accents.push(build_accent("英", uk, voices.first()).into());
     }
     if let Some(us) = &tc.pronunciation.us {
-        accents.push(build_accent("美", us).into());
+        accents.push(build_accent("美", us, voices.get(1)).into());
     }
 
     let pronunciation_col = (!accents.is_empty()).then(|| row(accents).spacing(15));

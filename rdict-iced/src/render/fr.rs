@@ -1,17 +1,19 @@
 use iced::widget::{column, container, scrollable, text};
 use iced::{Element, Length};
+use rdict_core::model::Voice;
 use rdict_core::parse::fr::{ToChinese, ToFrench};
 
 use crate::{
     Message,
     components::{comparison, list_item, section, title},
+    render,
 };
 
-pub fn to_chinese(tc: &ToChinese) -> Element<'_, Message> {
+pub fn to_chinese<'a>(tc: &'a ToChinese, voices: &'a [Voice]) -> Element<'a, Message> {
     let pronunciation_col = tc
         .pronunciation
         .as_ref()
-        .map(|ph| container(text(format!("[{ph}]")).style(text::secondary)).padding([4, 8]));
+        .map(|ph| container(render::pronunciation(ph.to_owned(), voices.first())).padding([4, 8]));
 
     let meanings_col = if tc.meanings.is_empty() {
         None
