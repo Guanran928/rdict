@@ -1,29 +1,57 @@
 {
+  description = "CLI youdao dictionary tool";
+
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
   };
 
   outputs =
-    { nixpkgs, flake-utils, ... }:
+    {
+      self,
+      nixpkgs,
+      flake-utils,
+    }:
     flake-utils.lib.eachDefaultSystem (
       system:
       let
-        pkgs = nixpkgs.legacyPackages.${system};
+        pkgs = import nixpkgs {
+          inherit system;
+        };
+        inherit (pkgs) lib;
+
+        rustPlatform = pkgs.makeRustPlatform {
+          cargo = pkgs.cargo;
+          rustc = pkgs.rustc;
+        };
+
+        rustToolchain =
+          with pkgs;
+          [
+            rustc
+            rustfmt
+            rust-analyzer
+            cargo
+          ]
+          ++ (lib.optionals pkgs.stdenv.isDarwin [ pkgs.libiconv ]);
+
       in
       {
         devShells.default = pkgs.mkShell {
-          packages = with pkgs; [
-            cargo
-            clippy
-            rust-analyzer
-            rustc
-            rustfmt
-          ];
+          packages = rustToolchain;
         };
 
         packages = {
-          inherit ((pkgs.callPackage ./package.nix { })) default rdict rdict-telegram;
+          default = rustPlatform.buildRustPackage {
+            pname = "rdict";
+            version = "0.1.0";
+            src = ./.;
+            cargoLock = {
+              lockFile = ./Cargo.lock;
+            };
+            buildInputs = lib.optionals pkgs.stdenv.isDarwin [ pkgs.libiconv ];
+          };
+
         };
       }
     );
