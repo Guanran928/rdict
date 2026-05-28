@@ -2,8 +2,10 @@
 
 mod args;
 mod pager;
+mod render;
 
 use crate::args::Args;
+use crate::render::TranslationDataExt;
 use anyhow::{Context, Result, ensure};
 use clap::{CommandFactory, Parser};
 use clap_complete::generate;

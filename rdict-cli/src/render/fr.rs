@@ -1,30 +1,36 @@
-use crate::parse::ko;
-use crate::render::{Render, colors};
+use crate::render::{RenderExt, colors};
 use owo_colors::OwoColorize;
+use rdict_core::parse::fr;
 use std::fmt::Write;
 
-impl Render for ko::ToChinese {
+impl RenderExt for fr::ToChinese {
     fn render_colored(&self) -> String {
         let mut output = String::new();
 
         writeln!(output, "{}", &self.input_text.bold()).unwrap();
         writeln!(output).unwrap();
 
+        if let Some(ph) = &self.pronunciation {
+            writeln!(output, "{}", "# Pronunciation".style(colors::MUTED)).unwrap();
+            writeln!(output, "[{}]", ph.style(colors::PRIMARY)).unwrap();
+            writeln!(output).unwrap();
+        }
+
         if !self.meanings.is_empty() {
             writeln!(output, "{}", "# Meanings".style(colors::MUTED)).unwrap();
             for m in &self.meanings {
-                if let Some(pos) = &m.part_of_speech {
-                    writeln!(output, "[{pos}]").unwrap();
-                }
-                for de in &m.definitions {
-                    writeln!(output, "* {}", de.style(colors::PRIMARY)).unwrap();
-                }
-                if let Some(ex) = &m.example {
-                    writeln!(output, "  {}", ex.ko.style(colors::SECONDARY)).unwrap();
-                    writeln!(output, "  {}", ex.zh.style(colors::SECONDARY)).unwrap();
-                }
-                writeln!(output).unwrap();
+                writeln!(output, "* {}", m.style(colors::PRIMARY)).unwrap();
             }
+            writeln!(output).unwrap();
+        }
+
+        if !self.examples.is_empty() {
+            writeln!(output, "{}", "# Examples".style(colors::MUTED)).unwrap();
+            for ex in &self.examples {
+                writeln!(output, "* {}", ex.fr.style(colors::PRIMARY)).unwrap();
+                writeln!(output, "  {}", ex.zh.style(colors::SECONDARY)).unwrap();
+            }
+            writeln!(output).unwrap();
         }
 
         output.trim_end().to_string()
@@ -36,28 +42,34 @@ impl Render for ko::ToChinese {
         writeln!(output, "{}", &self.input_text).unwrap();
         writeln!(output).unwrap();
 
+        if let Some(ph) = &self.pronunciation {
+            writeln!(output, "# Pronunciation").unwrap();
+            writeln!(output, "[{ph}]").unwrap();
+            writeln!(output).unwrap();
+        }
+
         if !self.meanings.is_empty() {
             writeln!(output, "# Meanings").unwrap();
             for m in &self.meanings {
-                if let Some(pos) = &m.part_of_speech {
-                    writeln!(output, "[{pos}]").unwrap();
-                }
-                for de in &m.definitions {
-                    writeln!(output, "* {de}").unwrap();
-                }
-                if let Some(ex) = &m.example {
-                    writeln!(output, "  {}", ex.ko).unwrap();
-                    writeln!(output, "  {}", ex.zh).unwrap();
-                }
-                writeln!(output).unwrap();
+                writeln!(output, "* {m}").unwrap();
             }
+            writeln!(output).unwrap();
+        }
+
+        if !self.examples.is_empty() {
+            writeln!(output, "# Examples").unwrap();
+            for ex in &self.examples {
+                writeln!(output, "* {}", ex.fr).unwrap();
+                writeln!(output, "  {}", ex.zh).unwrap();
+            }
+            writeln!(output).unwrap();
         }
 
         output.trim_end().to_string()
     }
 }
 
-impl Render for ko::ToKorean {
+impl RenderExt for fr::ToFrench {
     fn render_colored(&self) -> String {
         let mut output = String::new();
 
@@ -67,20 +79,15 @@ impl Render for ko::ToKorean {
         if !self.meanings.is_empty() {
             writeln!(output, "{}", "# Meanings".style(colors::MUTED)).unwrap();
             for m in &self.meanings {
-                if let Some(pos) = &m.part_of_speech {
-                    writeln!(output, "[{pos}]").unwrap();
-                }
-                for de in &m.definitions {
-                    writeln!(output, "* {}", de.style(colors::PRIMARY)).unwrap();
-                }
-                writeln!(output).unwrap();
+                writeln!(output, "* {}", m.style(colors::PRIMARY)).unwrap();
             }
+            writeln!(output).unwrap();
         }
 
         if !self.examples.is_empty() {
             writeln!(output, "{}", "# Examples".style(colors::MUTED)).unwrap();
             for ex in &self.examples {
-                writeln!(output, "* {}", ex.ko.style(colors::PRIMARY)).unwrap();
+                writeln!(output, "* {}", ex.fr.style(colors::PRIMARY)).unwrap();
                 writeln!(output, "  {}", ex.zh.style(colors::SECONDARY)).unwrap();
             }
             writeln!(output).unwrap();
@@ -98,20 +105,15 @@ impl Render for ko::ToKorean {
         if !self.meanings.is_empty() {
             writeln!(output, "# Meanings").unwrap();
             for m in &self.meanings {
-                if let Some(pos) = &m.part_of_speech {
-                    writeln!(output, "[{pos}]").unwrap();
-                }
-                for de in &m.definitions {
-                    writeln!(output, "* {de}").unwrap();
-                }
-                writeln!(output).unwrap();
+                writeln!(output, "* {m}").unwrap();
             }
+            writeln!(output).unwrap();
         }
 
         if !self.examples.is_empty() {
             writeln!(output, "# Examples").unwrap();
             for ex in &self.examples {
-                writeln!(output, "* {}", ex.ko).unwrap();
+                writeln!(output, "* {}", ex.fr).unwrap();
                 writeln!(output, "  {}", ex.zh).unwrap();
             }
             writeln!(output).unwrap();

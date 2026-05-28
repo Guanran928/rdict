@@ -1,5 +1,8 @@
 #![forbid(unsafe_code)]
 
+mod render;
+
+use crate::render::TranslationDataExt;
 use anyhow::{Context, Result};
 use rdict_core::rdict::Rdict;
 use std::sync::Arc;
@@ -56,7 +59,7 @@ async fn handle_command(bot: Bot, msg: Message, cmd: Command, client: Arc<Rdict>
                 .await
                 .context("Failed to get translation results")?;
 
-            let output = result.data.render_plain();
+            let output = result.data.render();
 
             let wrapped_output = format!(
                 "<pre><code class=\"language-markdown\">{}</code></pre>",

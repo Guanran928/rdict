@@ -52,32 +52,6 @@ pub enum TranslationData {
     NotFound(NotFound),
 }
 
-impl TranslationData {
-    fn as_render(&self) -> &dyn crate::render::Render {
-        match self {
-            Self::FromEnglish(x) => x,
-            Self::ToEnglish(x) => x,
-            Self::FromFrench(x) => x,
-            Self::ToFrench(x) => x,
-            Self::FromKorean(x) => x,
-            Self::ToKorean(x) => x,
-            Self::FromJapanese(x) => x,
-            Self::ToJapanese(x) => x,
-            Self::NotFound(x) => x,
-        }
-    }
-
-    #[must_use]
-    pub fn render_colored(&self) -> String {
-        self.as_render().render_colored()
-    }
-
-    #[must_use]
-    pub fn render_plain(&self) -> String {
-        self.as_render().render_plain()
-    }
-}
-
 impl Rdict {
     pub async fn new(
         base_url: &str,

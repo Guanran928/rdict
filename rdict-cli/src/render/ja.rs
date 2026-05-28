@@ -1,46 +1,50 @@
-use crate::parse::en;
-use crate::render::{Render, colors};
+use crate::render::{RenderExt, colors};
 use owo_colors::OwoColorize;
+use rdict_core::parse::ja;
 use std::fmt::Write;
 
-impl Render for en::ToChinese {
+impl RenderExt for ja::ToChinese {
     fn render_colored(&self) -> String {
         let mut output = String::new();
 
         writeln!(output, "{}", &self.input_text.bold()).unwrap();
         writeln!(output).unwrap();
 
-        if self.pronunciation.uk.is_some() || self.pronunciation.us.is_some() {
+        if let Some(pr) = &self.pronunciation {
             writeln!(output, "{}", "# Pronunciation".style(colors::MUTED)).unwrap();
-
-            if let Some(uk) = &self.pronunciation.uk {
-                writeln!(output, "英：[{}]", uk.style(colors::PRIMARY)).unwrap();
-            }
-
-            if let Some(us) = &self.pronunciation.us {
-                writeln!(output, "美：[{}]", us.style(colors::PRIMARY)).unwrap();
-            }
-
+            writeln!(
+                output,
+                "[{} | {}]",
+                pr.kana.style(colors::PRIMARY),
+                pr.romaji.style(colors::PRIMARY)
+            )
+            .unwrap();
             writeln!(output).unwrap();
         }
 
         if !self.meanings.is_empty() {
             writeln!(output, "{}", "# Meanings".style(colors::MUTED)).unwrap();
-            for me in &self.meanings {
-                if let Some(pa) = &me.part_of_speech {
-                    writeln!(output, "[{pa}]").unwrap();
-                }
-                for de in &me.definitions {
-                    writeln!(output, "* {}", de.style(colors::PRIMARY)).unwrap();
-                }
-                writeln!(output).unwrap();
+
+            if let Some(pos) = &self.part_of_speech {
+                writeln!(output, "[{}]", pos).unwrap();
             }
+
+            for m in &self.meanings {
+                writeln!(output, "* {}", m.style(colors::PRIMARY)).unwrap();
+            }
+            writeln!(output).unwrap();
+        }
+
+        if let Some(ex) = &self.exam {
+            writeln!(output, "{}", "# Exam".style(colors::MUTED)).unwrap();
+            writeln!(output, "{}", ex.style(colors::PRIMARY)).unwrap();
+            writeln!(output).unwrap();
         }
 
         if !self.examples.is_empty() {
             writeln!(output, "{}", "# Examples".style(colors::MUTED)).unwrap();
             for ex in &self.examples {
-                writeln!(output, "* {}", ex.en.style(colors::PRIMARY)).unwrap();
+                writeln!(output, "* {}", ex.ja.style(colors::PRIMARY)).unwrap();
                 writeln!(output, "  {}", ex.zh.style(colors::SECONDARY)).unwrap();
             }
             writeln!(output).unwrap();
@@ -55,37 +59,35 @@ impl Render for en::ToChinese {
         writeln!(output, "{}", &self.input_text).unwrap();
         writeln!(output).unwrap();
 
-        if self.pronunciation.uk.is_some() || self.pronunciation.us.is_some() {
+        if let Some(pr) = &self.pronunciation {
             writeln!(output, "# Pronunciation").unwrap();
-
-            if let Some(uk) = &self.pronunciation.uk {
-                writeln!(output, "英：[{uk}]").unwrap();
-            }
-
-            if let Some(us) = &self.pronunciation.us {
-                writeln!(output, "美：[{us}]").unwrap();
-            }
-
+            writeln!(output, "[{} | {}]", pr.kana, pr.romaji).unwrap();
             writeln!(output).unwrap();
         }
 
         if !self.meanings.is_empty() {
             writeln!(output, "# Meanings").unwrap();
-            for me in &self.meanings {
-                if let Some(pa) = &me.part_of_speech {
-                    writeln!(output, "[{pa}]").unwrap();
-                }
-                for de in &me.definitions {
-                    writeln!(output, "* {de}").unwrap();
-                }
-                writeln!(output).unwrap();
+
+            if let Some(pos) = &self.part_of_speech {
+                writeln!(output, "{pos}").unwrap();
             }
+
+            for m in &self.meanings {
+                writeln!(output, "* {m}").unwrap();
+            }
+            writeln!(output).unwrap();
+        }
+
+        if let Some(ex) = &self.exam {
+            writeln!(output, "# Exam").unwrap();
+            writeln!(output, "{ex}").unwrap();
+            writeln!(output).unwrap();
         }
 
         if !self.examples.is_empty() {
             writeln!(output, "# Examples").unwrap();
             for ex in &self.examples {
-                writeln!(output, "* {}", ex.en).unwrap();
+                writeln!(output, "* {}", ex.ja).unwrap();
                 writeln!(output, "  {}", ex.zh).unwrap();
             }
             writeln!(output).unwrap();
@@ -95,7 +97,7 @@ impl Render for en::ToChinese {
     }
 }
 
-impl Render for en::ToEnglish {
+impl RenderExt for ja::ToJapanese {
     fn render_colored(&self) -> String {
         let mut output = String::new();
 
@@ -104,8 +106,11 @@ impl Render for en::ToEnglish {
 
         if !self.meanings.is_empty() {
             writeln!(output, "{}", "# Meanings".style(colors::MUTED)).unwrap();
-            for me in &self.meanings {
-                writeln!(output, "* {}", me.style(colors::PRIMARY)).unwrap();
+            for m in &self.meanings {
+                if !m.point.is_empty() {
+                    write!(output, "[{}] ", m.point.style(colors::PRIMARY)).unwrap();
+                }
+                writeln!(output, "{}", m.definition.style(colors::PRIMARY)).unwrap();
             }
             writeln!(output).unwrap();
         }
@@ -113,7 +118,7 @@ impl Render for en::ToEnglish {
         if !self.examples.is_empty() {
             writeln!(output, "{}", "# Examples".style(colors::MUTED)).unwrap();
             for ex in &self.examples {
-                writeln!(output, "* {}", ex.en.style(colors::PRIMARY)).unwrap();
+                writeln!(output, "* {}", ex.ja.style(colors::PRIMARY)).unwrap();
                 writeln!(output, "  {}", ex.zh.style(colors::SECONDARY)).unwrap();
             }
             writeln!(output).unwrap();
@@ -130,8 +135,11 @@ impl Render for en::ToEnglish {
 
         if !self.meanings.is_empty() {
             writeln!(output, "# Meanings").unwrap();
-            for me in &self.meanings {
-                writeln!(output, "* {me}").unwrap();
+            for m in &self.meanings {
+                if !m.point.is_empty() {
+                    write!(output, "[{point}] ", point = m.point).unwrap();
+                }
+                writeln!(output, "{def}", def = m.definition).unwrap();
             }
             writeln!(output).unwrap();
         }
@@ -139,7 +147,7 @@ impl Render for en::ToEnglish {
         if !self.examples.is_empty() {
             writeln!(output, "# Examples").unwrap();
             for ex in &self.examples {
-                writeln!(output, "* {}", ex.en).unwrap();
+                writeln!(output, "* {}", ex.ja).unwrap();
                 writeln!(output, "  {}", ex.zh).unwrap();
             }
             writeln!(output).unwrap();

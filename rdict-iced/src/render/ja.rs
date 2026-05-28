@@ -71,14 +71,7 @@ pub fn to_japanese(te: &ToJapanese) -> Element<'_, Message> {
             let item: Element<'_, Message> = if meaning.point.is_empty() {
                 list_item(text(&meaning.definition))
             } else {
-                column![
-                    text(&meaning.point).font(Font {
-                        weight: font::Weight::Bold,
-                        ..Font::default()
-                    }),
-                    text(&meaning.definition).size(14).style(text::secondary),
-                ]
-                .into()
+                comparison(&meaning.point, &meaning.definition).into()
             };
             children = children.push(item);
         }
