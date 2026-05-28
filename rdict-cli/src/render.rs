@@ -1,16 +1,10 @@
-// TODO: This is shared by rdict_cli and rdict_telegram.
-//       I need to find a way to share this between them but without putting this inside rdict_core.
-//
-// TODO: This really should be moved to rdict_cli...
-//       but impl doesn't work for external data types
-
 mod en;
 mod fr;
 mod ja;
 mod ko;
 
-use crate::parse::NotFound;
 use owo_colors::OwoColorize;
+use rdict_core::{parse::NotFound, rdict::TranslationData};
 use std::fmt::Write;
 
 pub mod colors {
@@ -24,13 +18,13 @@ pub mod colors {
 }
 
 #[must_use]
-pub trait Render {
+pub trait RenderExt {
     // TODO: It's kind of duplicate
     fn render_colored(&self) -> String;
     fn render_plain(&self) -> String;
 }
 
-impl Render for NotFound {
+impl RenderExt for NotFound {
     fn render_colored(&self) -> String {
         let mut output = String::new();
 
@@ -51,5 +45,34 @@ impl Render for NotFound {
         }
 
         output.trim_end().to_string()
+    }
+}
+
+pub trait TranslationDataExt {
+    fn render_colored(&self) -> String;
+    fn render_plain(&self) -> String;
+}
+
+impl TranslationDataExt for TranslationData {
+    fn render_colored(&self) -> String {
+        as_render(self).render_colored()
+    }
+
+    fn render_plain(&self) -> String {
+        as_render(self).render_plain()
+    }
+}
+
+fn as_render(data: &TranslationData) -> &dyn RenderExt {
+    match data {
+        TranslationData::FromEnglish(x) => x,
+        TranslationData::ToEnglish(x) => x,
+        TranslationData::FromFrench(x) => x,
+        TranslationData::ToFrench(x) => x,
+        TranslationData::FromKorean(x) => x,
+        TranslationData::ToKorean(x) => x,
+        TranslationData::FromJapanese(x) => x,
+        TranslationData::ToJapanese(x) => x,
+        TranslationData::NotFound(x) => x,
     }
 }

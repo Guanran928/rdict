@@ -3,7 +3,6 @@
 pub mod model;
 pub mod parse;
 pub mod rdict;
-pub mod render;
 
 use std::path::PathBuf;
 use thiserror::Error;
