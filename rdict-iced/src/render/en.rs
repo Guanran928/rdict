@@ -1,6 +1,7 @@
 use iced::font;
 use iced::widget::{column, container, row, scrollable, text};
-use iced::{Element, Font, Length};
+use iced::{Font, Length};
+use iced_material as material;
 use rdict_core::parse::en::{ToChinese, ToEnglish};
 
 use crate::{
@@ -8,7 +9,7 @@ use crate::{
     components::{comparison, list_item, section, title},
 };
 
-pub fn to_chinese(tc: &ToChinese) -> Element<'_, Message> {
+pub fn to_chinese(tc: &ToChinese) -> material::Element<'_, Message> {
     // Pronunciation Layout
 
     let build_accent = |label: &'static str, value: &str| {
@@ -18,7 +19,7 @@ pub fn to_chinese(tc: &ToChinese) -> Element<'_, Message> {
                 ..Font::default()
             }),
             " ",
-            text(format!("[{value}]")).style(text::secondary)
+            text(format!("[{value}]")).style(material::text::surface_variant)
         ]
     };
 
@@ -43,7 +44,7 @@ pub fn to_chinese(tc: &ToChinese) -> Element<'_, Message> {
                 definitions_col = definitions_col.push(
                     container(text(p))
                         .padding([4, 8])
-                        .style(container::bordered_box),
+                        .style(material::style::container::outlined),
                 );
             }
             for definition in &meaning.definitions {
@@ -73,7 +74,7 @@ pub fn to_chinese(tc: &ToChinese) -> Element<'_, Message> {
         for (i, exam) in tc.exams.iter().enumerate() {
             // HACK: ASCII
             if i != 0 {
-                children = children.push(text("|").style(text::secondary))
+                children = children.push(text("|").style(material::text::surface_variant))
             }
 
             children = children.push(text(exam));
@@ -97,7 +98,7 @@ pub fn to_chinese(tc: &ToChinese) -> Element<'_, Message> {
     .into()
 }
 
-pub fn to_english(te: &ToEnglish) -> Element<'_, Message> {
+pub fn to_english(te: &ToEnglish) -> material::Element<'_, Message> {
     // Meanings Layout
     let meanings_col = if te.meanings.is_empty() {
         None

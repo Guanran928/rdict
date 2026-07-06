@@ -1,6 +1,7 @@
 use iced::font;
 use iced::widget::{column, container, scrollable, text};
-use iced::{Element, Font, Length};
+use iced::{Font, Length};
+use iced_material as material;
 use rdict_core::parse::ja::{ToChinese, ToJapanese};
 
 use crate::{
@@ -8,22 +9,23 @@ use crate::{
     components::{comparison, list_item, section, title},
 };
 
-pub fn to_chinese(tc: &ToChinese) -> Element<'_, Message> {
+pub fn to_chinese(tc: &ToChinese) -> material::Element<'_, Message> {
     let pronunciation_col = tc.pronunciation.as_ref().map(|pr| {
-        container(text(format!("[{} | {}]", pr.kana, pr.romaji)).style(text::secondary))
-            .padding([4, 8])
+        container(
+            text(format!("[{} | {}]", pr.kana, pr.romaji)).style(material::text::surface_variant),
+        )
+        .padding([4, 8])
     });
 
     let pos_col = tc.part_of_speech.as_ref().map(|pos| {
         container(text(pos))
             .padding([4, 8])
-            .style(container::bordered_box)
+            .style(material::style::container::outlined)
     });
 
-    let exam_col = tc
-        .exam
-        .as_ref()
-        .map(|ex| container(text(ex).size(14).style(text::secondary)).padding([4, 8]));
+    let exam_col = tc.exam.as_ref().map(|ex| {
+        container(text(ex).size(14).style(material::text::surface_variant)).padding([4, 8])
+    });
 
     let meanings_col = if tc.meanings.is_empty() {
         None
@@ -62,13 +64,13 @@ pub fn to_chinese(tc: &ToChinese) -> Element<'_, Message> {
     .into()
 }
 
-pub fn to_japanese(te: &ToJapanese) -> Element<'_, Message> {
+pub fn to_japanese(te: &ToJapanese) -> material::Element<'_, Message> {
     let meanings_col = if te.meanings.is_empty() {
         None
     } else {
         let mut children = column![].spacing(10);
         for meaning in &te.meanings {
-            let item: Element<'_, Message> = if meaning.point.is_empty() {
+            let item: material::Element<'_, Message> = if meaning.point.is_empty() {
                 list_item(text(&meaning.definition))
             } else {
                 column![
@@ -76,7 +78,9 @@ pub fn to_japanese(te: &ToJapanese) -> Element<'_, Message> {
                         weight: font::Weight::Bold,
                         ..Font::default()
                     }),
-                    text(&meaning.definition).size(14).style(text::secondary),
+                    text(&meaning.definition)
+                        .size(14)
+                        .style(material::text::surface_variant),
                 ]
                 .into()
             };

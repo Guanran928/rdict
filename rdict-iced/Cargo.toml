@@ -15,6 +15,7 @@ path = "src/main.rs"
 [dependencies]
 anyhow = "1.0.98"
 iced = { version = "0.14.0", features = ["tokio"] }
+iced_material = { git = "https://github.com/moeleak/iced_material", rev = "1a8fd72a71c33b198a785133febc9792f55b3a62" }
 tokio = "1.46.0"
 rdict_core = { path = "../rdict-core" }
 directories-next = "2.0.0"

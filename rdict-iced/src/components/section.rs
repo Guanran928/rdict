@@ -1,19 +1,22 @@
 use crate::Message;
 use iced::{
-    Element, Font, font,
-    widget::{column, container, rule, text},
+    Font, font,
+    widget::{column, container, text},
 };
+use iced_material as material;
 
 pub fn section<'a>(
     title: &'a str,
-    children: impl Into<Element<'a, Message>>,
-) -> Element<'a, Message> {
+    children: impl Into<material::Element<'a, Message>>,
+) -> material::Element<'a, Message> {
     column![
-        text(title).style(text::secondary).font(Font {
-            weight: font::Weight::Bold,
-            ..Font::default()
-        }),
-        rule::horizontal(1),
+        text(title)
+            .style(material::text::surface_variant)
+            .font(Font {
+                weight: font::Weight::Bold,
+                ..Font::default()
+            }),
+        material::widget::rule::horizontal_full_width(),
         container(children)
     ]
     .spacing(10)

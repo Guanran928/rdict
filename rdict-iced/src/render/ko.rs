@@ -1,5 +1,6 @@
+use iced::Length;
 use iced::widget::{column, container, scrollable, text};
-use iced::{Element, Length};
+use iced_material as material;
 use rdict_core::parse::ko::{ToChinese, ToKorean};
 
 use crate::{
@@ -7,7 +8,7 @@ use crate::{
     components::{comparison, list_item, section, title},
 };
 
-pub fn to_chinese(tc: &ToChinese) -> Element<'_, Message> {
+pub fn to_chinese(tc: &ToChinese) -> material::Element<'_, Message> {
     let meanings_col = if tc.meanings.is_empty() {
         None
     } else {
@@ -18,15 +19,15 @@ pub fn to_chinese(tc: &ToChinese) -> Element<'_, Message> {
                 inner = inner.push(
                     container(text(pos))
                         .padding([4, 8])
-                        .style(container::bordered_box),
+                        .style(material::style::container::outlined),
                 );
             }
             for definition in &meaning.definitions {
                 inner = inner.push(list_item(text(definition)));
             }
             if let Some(ex) = &meaning.example {
-                inner = inner.push(text(&ex.ko).size(14).style(text::secondary));
-                inner = inner.push(text(&ex.zh).size(14).style(text::secondary));
+                inner = inner.push(text(&ex.ko).size(14).style(material::text::surface_variant));
+                inner = inner.push(text(&ex.zh).size(14).style(material::text::surface_variant));
             }
             children = children.push(inner);
         }
@@ -43,7 +44,7 @@ pub fn to_chinese(tc: &ToChinese) -> Element<'_, Message> {
     .into()
 }
 
-pub fn to_korean(te: &ToKorean) -> Element<'_, Message> {
+pub fn to_korean(te: &ToKorean) -> material::Element<'_, Message> {
     let meanings_col = if te.meanings.is_empty() {
         None
     } else {
@@ -54,7 +55,7 @@ pub fn to_korean(te: &ToKorean) -> Element<'_, Message> {
                 inner = inner.push(
                     container(text(pos))
                         .padding([4, 8])
-                        .style(container::bordered_box),
+                        .style(material::style::container::outlined),
                 );
             }
             for definition in &meaning.definitions {

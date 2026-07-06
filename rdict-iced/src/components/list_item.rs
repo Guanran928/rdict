@@ -1,13 +1,15 @@
 use crate::Message;
 use iced::{
-    Alignment, Element,
+    Alignment,
     widget::{row, text},
 };
+use iced_material as material;
 
-pub fn list_item<'a>(content: impl Into<Element<'a, Message>>) -> Element<'a, Message> {
+pub fn list_item<'a>(
+    content: impl Into<material::Element<'a, Message>>,
+) -> material::Element<'a, Message> {
     row![
-        // FIXME: use proper way to render the dot
-        text("•").size(20),
+        text("•").size(20).style(material::text::surface_variant),
         content.into()
     ]
     .spacing(10)

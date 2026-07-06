@@ -1,5 +1,6 @@
+use iced::Length;
 use iced::widget::{column, container, scrollable, text};
-use iced::{Element, Length};
+use iced_material as material;
 use rdict_core::parse::fr::{ToChinese, ToFrench};
 
 use crate::{
@@ -7,11 +8,10 @@ use crate::{
     components::{comparison, list_item, section, title},
 };
 
-pub fn to_chinese(tc: &ToChinese) -> Element<'_, Message> {
-    let pronunciation_col = tc
-        .pronunciation
-        .as_ref()
-        .map(|ph| container(text(format!("[{ph}]")).style(text::secondary)).padding([4, 8]));
+pub fn to_chinese(tc: &ToChinese) -> material::Element<'_, Message> {
+    let pronunciation_col = tc.pronunciation.as_ref().map(|ph| {
+        container(text(format!("[{ph}]")).style(material::text::surface_variant)).padding([4, 8])
+    });
 
     let meanings_col = if tc.meanings.is_empty() {
         None
@@ -48,7 +48,7 @@ pub fn to_chinese(tc: &ToChinese) -> Element<'_, Message> {
     .into()
 }
 
-pub fn to_french(te: &ToFrench) -> Element<'_, Message> {
+pub fn to_french(te: &ToFrench) -> material::Element<'_, Message> {
     let meanings_col = if te.meanings.is_empty() {
         None
     } else {
