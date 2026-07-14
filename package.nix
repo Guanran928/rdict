@@ -8,15 +8,18 @@
 let
   version = "0.3.0";
   src = lib.cleanSource ./.;
-  cargoHash = "sha256-buU7xWrxkf9UHvDUZq0WRyXdKJMrQPUQxYm2xKdfegQ=";
 in
 rec {
   default = rdict;
 
   rdict = rustPlatform.buildRustPackage {
-    inherit version src cargoHash;
+    inherit version src;
 
     pname = "rdict";
+
+    cargoLock = {
+      lockFile = ./Cargo.lock;
+    };
 
     buildAndTestSubdir = "./rdict-cli";
 
@@ -39,9 +42,13 @@ rec {
   };
 
   rdict-telegram = rustPlatform.buildRustPackage {
-    inherit version src cargoHash;
+    inherit version src;
 
     pname = "rdict-telegram";
+
+    cargoLock = {
+      lockFile = ./Cargo.lock;
+    };
 
     nativeBuildInputs = lib.optionals (stdenv.buildPlatform.canExecute stdenv.hostPlatform) [
       writableTmpDirAsHomeHook
