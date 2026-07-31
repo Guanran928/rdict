@@ -1,0 +1,22 @@
+[package]
+name = "rdict-reactor"
+version.workspace = true
+authors.workspace = true
+description.workspace = true
+edition.workspace = true
+repository.workspace = true
+license.workspace = true
+readme.workspace = true
+
+[[bin]]
+name = "rdict-reactor"
+path = "src/main.rs"
+
+[dependencies]
+windows-reactor = { git = "https://github.com/microsoft/windows-rs", rev = "5e0c28339114d762bf27da397e22567753f3361a" }
+tokio = { version = "1", features = ["rt-multi-thread"] }
+rdict_core = { path = "../rdict-core" }
+directories-next = "2.0.0"
+
+[build-dependencies]
+windows-reactor-setup = { git = "https://github.com/microsoft/windows-rs", rev = "5e0c28339114d762bf27da397e22567753f3361a" }

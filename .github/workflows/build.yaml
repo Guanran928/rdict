@@ -35,3 +35,18 @@ jobs:
         with:
           name: rdict
           path: target/debug/rdict
+
+  build-windows-reactor:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6
+      - name: Build rdict-reactor
+        run: cargo build -p rdict-reactor
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: rdict-reactor
+          path: target/debug/rdict-reactor.exe
